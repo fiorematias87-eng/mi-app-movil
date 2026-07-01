@@ -121,7 +121,7 @@ export default function HomeCliente() {
       
       const formData = new FormData();
       formData.append('file', file);
-      formData.append('upload_preset', 'lodefiore_preset');
+      formData.append('upload_preset', 'ml_default');
 
       // Petición nativa directa apuntando al Cloud Name corregido: lodefiore
       const respuesta = await fetch('https://api.cloudinary.com/v1_1/lodefiore/image/upload', {
