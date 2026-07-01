@@ -123,8 +123,8 @@ export default function HomeCliente() {
       formData.append('file', file);
       formData.append('upload_preset', 'lodefiore_preset');
 
-      // Petición nativa directa a la API de Cloudinary usando tu PID
-      const respuesta = await fetch('https://api.cloudinary.com/v1_1/02d1d9cf-7e9c-4a12-945d-452f5115dc31/image/upload', {
+      // Petición nativa directa apuntando al Cloud Name corregido: lodefiore
+      const respuesta = await fetch('https://api.cloudinary.com/v1_1/lodefiore/image/upload', {
         method: 'POST',
         body: formData
       });
