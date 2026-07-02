@@ -29,7 +29,7 @@ interface Producto {
   precio: number;
   categoria: string;
   imagen: string;
-  activo?: boolean; // Nuevo campo opcional para controlar stock
+  activo?: boolean;
 }
 
 interface ItemDelCarrito {
@@ -73,7 +73,6 @@ export default function HomeCliente() {
   const [productos, setProductos] = useState<Producto[]>(() => {
     const guardado = localStorage.getItem('local_productos');
     if (guardado) {
-      // Nos aseguramos que todos tengan la propiedad 'activo' por defecto si no existía antes
       const prods = JSON.parse(guardado);
       return prods.map((p: Producto) => p.activo !== undefined ? p : { ...p, activo: true });
     }
@@ -98,6 +97,7 @@ export default function HomeCliente() {
   });
 
   const [subiendoImagen, setSubiendoImagen] = useState(false);
+  const [animarCarrito, setAnimarCarrito] = useState(false);
 
   useEffect(() => { localStorage.setItem('local_info', JSON.stringify(infoLocal)); }, [infoLocal]);
   useEffect(() => { localStorage.setItem('local_productos', JSON.stringify(productos)); }, [productos]);
@@ -108,7 +108,7 @@ export default function HomeCliente() {
   const [carrito, setCarrito] = useState<ItemDelCarrito[]>([]);
   const [vistaActual, setVistaActual] = useState<'menu' | 'carrito' | 'admin'>('menu');
   const [busqueda, setBusqueda] = useState('');
-  const [busquedaAdmin, setBusquedaAdmin] = useState(''); // Buscador del Admin
+  const [busquedaAdmin, setBusquedaAdmin] = useState('');
 
   // Formulario del cliente
   const [nombre, setNombre] = useState(() => localStorage.getItem('cliente_nombre') || '');
@@ -144,6 +144,15 @@ export default function HomeCliente() {
       setCategoriaAdminActiva(categorias[0]);
     }
   }, [categorias]);
+
+  // === REPRODUCCIÓN DE AUDIO ASINCRÓNICO EVITANDO FILTROS ===
+  const reproducirSonidoExito = () => {
+    const audio = new Audio("https://assets.mixkit.co/active_storage/sfx/2568/2568-84.wav");
+    audio.volume = 0.3;
+    audio.play().catch(() => {
+      console.log("Audio bloqueado por el navegador del cliente hasta la primera interacción.");
+    });
+  };
 
   // === MANEJADOR CLOUDINARY ===
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>, tipo: 'portada' | 'avatar' | 'producto') => {
@@ -187,6 +196,10 @@ export default function HomeCliente() {
   };
 
   const agregarAlCarrito = (producto: Producto) => {
+    reproducirSonidoExito();
+    setAnimarCarrito(true);
+    setTimeout(() => setAnimarCarrito(false), 300);
+
     setCarrito(prev => {
       const existe = prev.find(item => item.id === producto.id);
       if (existe) return prev.map(item => item.id === producto.id ? { ...item, cantidad: item.cantidad + 1 } : item);
@@ -195,6 +208,7 @@ export default function HomeCliente() {
   };
 
   const modificarCantidad = (id: string, accion: 'sumar' | 'restar') => {
+    if (accion === 'sumar') reproducirSonidoExito();
     setCarrito(prev => prev.map(item => {
       if (item.id === id) {
         const nuevaCantidad = accion === 'sumar' ? item.cantidad + 1 : item.cantidad - 1;
@@ -214,18 +228,9 @@ export default function HomeCliente() {
     localStorage.setItem('local_productos', JSON.stringify(listadoActualizado));
   };
 
-  const obtenerGeolocalizacion = () => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition((posicion) => {
-        setGmapsLink(`https://www.google.com/maps?q=${posicion.coords.latitude},${posicion.coords.longitude}`);
-        alert("📍 ¡Ubicación GPS guardada automáticamente de forma exacta!");
-      }, () => {
-        window.open("https://www.google.com/maps", "_blank");
-        alert("No se pudo acceder al sensor GPS.\n\nSe abrió Google Maps, buscá tu ubicación, tocá 'Compartir', luego 'Copiar enlace' y pegalo en el casillero.");
-      }, { enableHighAccuracy: true });
-    } else {
-      window.open("https://www.google.com/maps", "_blank");
-    }
+  const abrirGoogleMapsExterno = () => {
+    window.open("https://www.google.com/maps", "_blank");
+    alert("📍 Te redirigimos a Google Maps:\n\n1. Buscá tu casa o ubicación exacta.\n2. Tocá el botón 'Compartir'.\n3. Elegí 'Copiar enlace'.\n4. Regresá acá y pegalo en el cuadro de abajo.");
   };
 
   const enviarPedidoWhatsApp = (e: React.FormEvent) => {
@@ -237,7 +242,11 @@ export default function HomeCliente() {
 
     let mensaje = `⭐️ *NUEVO PEDIDO - ${infoLocal.nombre.toUpperCase()}* ⭐️\n\n`;
     mensaje += `👤 *Cliente:* ${nombre}\n📞 *Teléfono:* ${telefono}\n📍 *Dirección:* ${direccion}\n🛣 *Entre Calles:* ${entreCalles}\n`;
-    if (gmapsLink) mensaje += `🗺️ *Ubicación GPS:* ${gmapsLink}\n`;
+    
+    if (gmapsLink.trim() !== "") {
+      mensaje += `📌 *UBICACIÓN GOOGLE MAPS REPARTIDOR:*\n${gmapsLink.trim()}\n`;
+    }
+    
     mensaje += `\n🛒 *Detalle:*\n`;
     carrito.forEach(item => { mensaje += `• ${item.cantidad}x ${item.nombre} ($${(item.precio * item.cantidad).toLocaleString('es-AR')})\n`; });
     mensaje += `\n💵 *Subtotal:* $${subtotal.toLocaleString('es-AR')}\n🛵 *Envío:* $${infoLocal.costoEnvio.toLocaleString('es-AR')}\n💰 *TOTAL:* $${totalFinal.toLocaleString('es-AR')}\n\n`;
@@ -295,7 +304,6 @@ export default function HomeCliente() {
   const cantidadTotalProductos = carrito.reduce((acc, item) => acc + item.cantidad, 0);
   const subtotalCarrito = carrito.reduce((acc, item) => acc + (item.precio * item.cantidad), 0);
 
-  // El cliente solo ve productos que estén activos (con stock)
   const productosFiltradosCliente = productos.filter(p => {
     const estaActivo = p.activo !== false;
     const coincideCategoria = p.categoria === categoriaActiva;
@@ -304,12 +312,11 @@ export default function HomeCliente() {
     return busqueda.trim() !== "" ? (estaActivo && coincideBusqueda) : (estaActivo && coincideCategoria && coincideBusqueda);
   });
 
-  // Filtrado para la sección de administración (Muestra todo y permite buscar de manera global o por cat)
   const productosFiltradosAdmin = productos.filter(p => {
     const coincideBusqueda = p.nombre.toLowerCase().includes(busquedaAdmin.toLowerCase()) || 
                              p.descripcion.toLowerCase().includes(busquedaAdmin.toLowerCase());
     if (busquedaAdmin.trim() !== "") {
-      return coincideBusqueda; // Búsqueda total masiva
+      return coincideBusqueda;
     }
     return p.categoria === categoriaAdminActiva;
   });
@@ -323,12 +330,16 @@ export default function HomeCliente() {
         </div>
       )}
 
-      {/* BOTÓN FLOTANTE CARRITO */}
+      {/* BOTÓN FLOTANTE CARRITO CON REBOTE Y CAMBIO DE COLOR */}
       {vistaActual === 'menu' && cantidadTotalProductos > 0 && (
         <div className="fixed bottom-20 left-1/2 -translate-x-1/2 w-full max-w-sm px-4 z-40">
           <button 
             onClick={() => setVistaActual('carrito')}
-            className="w-full bg-gradient-to-r from-yellow-400 via-amber-500 to-yellow-500 text-neutral-950 font-black py-3 px-4 rounded-2xl flex items-center justify-between shadow-xl active:scale-95 transition-transform"
+            className={`w-full text-neutral-950 font-black py-3 px-4 rounded-2xl flex items-center justify-between shadow-xl transition-all duration-200 ${
+              animarCarrito 
+                ? 'scale-110 bg-gradient-to-r from-emerald-400 to-teal-500' 
+                : 'scale-100 bg-gradient-to-r from-yellow-400 via-amber-500 to-yellow-500'
+            }`}
           >
             <div className="flex items-center gap-2">
               <div className="bg-neutral-950 text-yellow-400 font-extrabold text-xs w-6 h-6 rounded-lg flex items-center justify-center">{cantidadTotalProductos}</div>
@@ -407,7 +418,7 @@ export default function HomeCliente() {
         </>
       )}
 
-      {/* VISTA 2: CARRITO */}
+      {/* VISTA 2: CARRITO CON SECCIÓN DE GOOGLE MAPS INTUITIVA */}
       {vistaActual === 'carrito' && (
         <div className="p-4">
           <div className="flex justify-between items-center mb-6">
@@ -437,29 +448,30 @@ export default function HomeCliente() {
                 ))}
               </div>
 
-              {/* SECTOR DATOS ENTREGA */}
+              {/* SECTOR DATOS ENTREGA - REESTRUCTURADO PAUTAS GPS Y MAPS */}
               <div className="bg-neutral-800/60 p-4 rounded-2xl space-y-3 border border-neutral-700/30">
-                <div className="flex justify-between items-center">
+                <div className="flex justify-between items-center mb-1">
                   <h3 className="text-xs font-black tracking-widest text-sky-400 uppercase">Datos de Entrega</h3>
-                  <button type="button" onClick={obtenerGeolocalizacion} className="flex items-center gap-1 text-[11px] font-black bg-gradient-to-r from-sky-400 to-sky-500 text-neutral-950 px-3 py-1.5 rounded-xl shadow-md">
-                    📍 Ubicación o Abrir Maps <ExternalLink size={11} />
+                  <button type="button" onClick={abrirGoogleMapsExterno} className="flex items-center gap-1.5 text-[11px] font-black bg-gradient-to-r from-sky-400 to-sky-500 text-neutral-950 px-3 py-2 rounded-xl shadow-md active:scale-95 transition-transform">
+                    🗺️ Abrir Google Maps <ExternalLink size={11} />
                   </button>
                 </div>
                 
                 <input type="text" placeholder="Nombre y Apellido" value={nombre} onChange={e=>setNombre(e.target.value)} className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-3 px-4 text-sm text-white focus:border-sky-400 focus:outline-none" required />
                 <input type="tel" placeholder="Teléfono de contacto" value={telefono} onChange={e=>setTelefono(e.target.value)} className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-3 px-4 text-sm text-white focus:border-sky-400 focus:outline-none" required />
                 <input type="text" placeholder="Calle y Número (Ej: Av Belgrano 450)" value={direccion} onChange={e=>setDireccion(e.target.value)} className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-3 px-4 text-sm text-white focus:border-sky-400 focus:outline-none" required />
-                <input type="text" placeholder="¿Entre qué calles o indicaciones?" value={entreCalles} onChange={e=>setEntreCalles(e.target.value)} className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-3 px-4 text-sm text-white focus:border-sky-400 focus:outline-none" required />
+                <input type="text" placeholder="¿Entre qué calles o indicaciones de fachada?" value={entreCalles} onChange={e=>setEntreCalles(e.target.value)} className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-3 px-4 text-sm text-white focus:border-sky-400 focus:outline-none" required />
                 
-                <div className="pt-1">
-                  <label className="text-[10px] text-neutral-400 font-bold block mb-1">Link de Google Maps (Opcional/Pegar si abriste la app):</label>
+                <div className="pt-2 border-t border-neutral-700/40">
+                  <label className="text-[10px] text-yellow-400 font-bold block mb-1">¿Pegaste el link de tu ubicación aquí abajo?</label>
                   <input 
                     type="text" 
-                    placeholder="Pegá acá el enlace de tu ubicación..." 
+                    placeholder="Mantené apretado acá y elegí 'Pegar'..." 
                     value={gmapsLink} 
                     onChange={e=>setGmapsLink(e.target.value)} 
-                    className="w-full bg-neutral-950/60 border border-neutral-800 rounded-xl py-2 px-3 text-xs text-sky-400 placeholder-neutral-600 focus:outline-none" 
+                    className="w-full bg-neutral-950 border border-neutral-800 rounded-xl py-2.5 px-3 text-xs text-sky-400 placeholder-neutral-600 focus:outline-none focus:border-sky-500" 
                   />
+                  <p className="text-[9px] text-neutral-500 mt-1">Sirve para que el delivery llegue sin perderse usando el GPS.</p>
                 </div>
               </div>
 
@@ -504,7 +516,7 @@ export default function HomeCliente() {
             </div>
           </div>
 
-          {/* 1. SECCIÓN ACORDEÓN: CAJA */}
+          {/* CAJA */}
           <div className="bg-neutral-800/60 rounded-2xl border border-neutral-700/30 overflow-hidden">
             <button onClick={() => toggleSeccionAdmin('caja')} className="w-full p-4 flex justify-between items-center font-black text-xs uppercase tracking-wider text-yellow-500">
               <span className="flex items-center gap-2"><DollarSign size={14}/> Cierre de Caja y Métricas</span>
@@ -527,7 +539,7 @@ export default function HomeCliente() {
             )}
           </div>
 
-          {/* 2. SECCIÓN ACORDEÓN: DATOS BÁSICOS */}
+          {/* DATOS COMERCIO */}
           <div className="bg-neutral-800/60 rounded-2xl border border-neutral-700/30 overflow-hidden">
             <button onClick={() => toggleSeccionAdmin('datos')} className="w-full p-4 flex justify-between items-center font-black text-xs uppercase tracking-wider text-sky-400">
               <span className="flex items-center gap-2"><User size={14}/> Información del Comercio</span>
@@ -544,7 +556,7 @@ export default function HomeCliente() {
             )}
           </div>
 
-          {/* 3. SECCIÓN ACORDEÓN: DISEÑO & FOTOS */}
+          {/* IMÁGENES */}
           <div className="bg-neutral-800/60 rounded-2xl border border-neutral-700/30 overflow-hidden">
             <button onClick={() => toggleSeccionAdmin('fotos')} className="w-full p-4 flex justify-between items-center font-black text-xs uppercase tracking-wider text-sky-400">
               <span className="flex items-center gap-2"><Camera size={14}/> Identidad Visual e Imágenes</span>
@@ -572,7 +584,7 @@ export default function HomeCliente() {
             )}
           </div>
 
-          {/* 4. SECCIÓN ACORDEÓN: COBROS */}
+          {/* COBROS */}
           <div className="bg-neutral-800/60 rounded-2xl border border-neutral-700/30 overflow-hidden">
             <button onClick={() => toggleSeccionAdmin('cobros')} className="w-full p-4 flex justify-between items-center font-black text-xs uppercase tracking-wider text-sky-400">
               <span className="flex items-center gap-2"><CreditCard size={14}/> Cuentas de Transferencia</span>
@@ -586,7 +598,7 @@ export default function HomeCliente() {
             )}
           </div>
 
-          {/* 5. SECCIÓN ACORDEÓN: CATEGORÍAS */}
+          {/* CATEGORÍAS */}
           <div className="bg-neutral-800/60 rounded-2xl border border-neutral-700/30 overflow-hidden">
             <button onClick={() => toggleSeccionAdmin('categorias')} className="w-full p-4 flex justify-between items-center font-black text-xs uppercase tracking-wider text-sky-400">
               <span className="flex items-center gap-2"><Layers size={14}/> Estructura de Secciones</span>
@@ -610,7 +622,7 @@ export default function HomeCliente() {
             )}
           </div>
 
-          {/* 6. SECCIÓN ACORDEÓN: GESTIÓN CON BUSCADOR INTERNO Y SWAP DE STOCK */}
+          {/* PRODUCTOS */}
           <div className="bg-neutral-800/60 rounded-2xl border border-neutral-700/30 overflow-hidden">
             <button onClick={() => toggleSeccionAdmin('productos')} className="w-full p-4 flex justify-between items-center font-black text-xs uppercase tracking-wider text-emerald-400">
               <span className="flex items-center gap-2"><ShoppingBag size={14}/> Gestión de Productos</span>
@@ -619,7 +631,6 @@ export default function HomeCliente() {
             {seccionAdminAbierta === 'productos' && (
               <div className="p-4 pt-3 space-y-4 border-t border-neutral-800/50">
                 
-                {/* BUSCADOR INTERNO DEL ADMINISTRADOR */}
                 <div className="relative">
                   <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500" />
                   <input 
@@ -655,7 +666,6 @@ export default function HomeCliente() {
                   </div>
                 )}
 
-                {/* Si no se está buscando globalmente, se muestran las solapas por categoría */}
                 {!busquedaAdmin.trim() && (
                   <div className="border-t border-neutral-800/80 pt-2">
                     <div className="flex gap-1.5 overflow-x-auto pb-2 scrollbar-none">
@@ -666,7 +676,6 @@ export default function HomeCliente() {
                   </div>
                 )}
 
-                {/* LISTADO DE PRODUCTOS */}
                 <div className="space-y-2 max-h-[250px] overflow-y-auto pr-1">
                   {productosFiltradosAdmin.length === 0 ? (
                     <p className="text-center py-4 text-neutral-500 text-[11px]">No se encontraron artículos.</p>
@@ -684,7 +693,6 @@ export default function HomeCliente() {
                           </div>
                         </div>
                         <div className="flex gap-1 ml-2 flex-shrink-0">
-                          {/* Botón Ojo: Pausar/Activar stock */}
                           <button onClick={() => toggleActivoProducto(p.id)} className={`p-2 rounded-lg transition-colors ${p.activo !== false ? 'text-emerald-400 bg-emerald-950/40' : 'text-red-400 bg-red-950/40'}`}>
                             {p.activo !== false ? <Eye size={12}/> : <EyeOff size={12}/>}
                           </button>
