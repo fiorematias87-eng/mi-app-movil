@@ -4,7 +4,7 @@ import {
   ShoppingBag, ShoppingCart, MessageSquare, MapPin, Plus, Minus, 
   Trash2, Star, User, Phone, Navigation, Settings, X, Edit2, 
   Save, DollarSign, Clock, Calendar, Image, Link, CreditCard, Layers, 
-  ChevronDown, ChevronUp, Search, LogOut
+  ChevronDown, ChevronUp, Search, LogOut, Camera
 } from 'lucide-react';
 
 // === ESTRUCTURAS DE DATOS VALIDADAS ===
@@ -87,7 +87,7 @@ export default function HomeCliente() {
     return Number(localStorage.getItem('local_caja_acumulada') || "0");
   });
 
-  // NUEVO: Estado de sesión del Administrador (Persistente)
+  // Estado de sesión del Administrador (Persistente)
   const [isAdminAutenticado, setIsAdminAutenticado] = useState<boolean>(() => {
     return localStorage.getItem('admin_sesion_activa') === 'true';
   });
@@ -103,7 +103,7 @@ export default function HomeCliente() {
   const [carrito, setCarrito] = useState<ItemDelCarrito[]>([]);
   const [vistaActual, setVistaActual] = useState<'menu' | 'carrito' | 'admin'>('menu');
   
-  // NUEVO: Estado del buscador del cliente
+  // Estado del buscador del cliente
   const [busqueda, setBusqueda] = useState('');
 
   // Formulario del cliente con Persistencia
@@ -249,13 +249,12 @@ export default function HomeCliente() {
   // Función de ingreso rápido o inteligente al admin
   const accederAlAdminSeguro = () => {
     if (isAdminAutenticado) {
-      // Si ya está guardada la sesión en el navegador, pasa directo sin molestar
       setVistaActual('admin');
     } else {
       const password = prompt("Ingresá la contraseña del administrador:");
       if (password === "applodefiore") {
         setIsAdminAutenticado(true);
-        localStorage.setItem('admin_sesion_activa', 'true'); // Guardamos bandera
+        localStorage.setItem('admin_sesion_activa', 'true');
         setVistaActual('admin');
       } else if (password !== null) {
         alert("Contraseña incorrecta.");
@@ -274,13 +273,12 @@ export default function HomeCliente() {
   const cantidadTotalProductos = carrito.reduce((acc, item) => acc + item.cantidad, 0);
   const subtotalCarrito = carrito.reduce((acc, item) => acc + (item.precio * item.cantidad), 0);
 
-  // LOGICA FILTRADO DE PRODUCTOS EN EL CLIENTE (Combina pestaña activa + barra de búsqueda)
+  // LOGICA FILTRADO DE PRODUCTOS EN EL CLIENTE
   const productosFiltradosCliente = productos.filter(p => {
     const coincideCategoria = p.categoria === categoriaActiva;
     const coincideBusqueda = p.nombre.toLowerCase().includes(busqueda.toLowerCase()) || 
                              p.descripcion.toLowerCase().includes(busqueda.toLowerCase());
     
-    // Si escribe en el buscador, salteamos la pestaña para que encuentre en toda la tienda completo
     return busqueda.trim() !== "" ? coincideBusqueda : (coincideCategoria && coincideBusqueda);
   });
 
@@ -331,7 +329,7 @@ export default function HomeCliente() {
             <div className="flex items-center gap-1 mt-3 text-xs text-sky-400 font-semibold bg-sky-950/40 px-3 py-1 rounded-full border border-sky-900/40"><MapPin size={13} /><span>{infoLocal.direccion}</span></div>
           </div>
 
-          {/* NUEVO: BARRA DE BÚSQUEDA INTERACTIVA */}
+          {/* BARRA DE BÚSQUEDA INTERACTIVA */}
           <div className="px-4 py-2">
             <div className="relative">
               <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-500" />
@@ -351,7 +349,7 @@ export default function HomeCliente() {
             )}
           </div>
 
-          {/* SECTOR CATEGORÍAS (Se oculta si se está buscando activamente para no confundir) */}
+          {/* SECTOR CATEGORÍAS */}
           {busqueda.trim() === "" && (
             <div className="flex gap-2 overflow-x-auto px-4 py-2 sticky top-0 bg-neutral-900/90 backdrop-blur-md z-10 scrollbar-none">
               {categorias.map((cat) => (
@@ -463,7 +461,6 @@ export default function HomeCliente() {
               <span className="text-[11px] text-neutral-500">Admin Activo</span>
             </div>
             
-            {/* NUEVO ACCIÓN DE CIERRE REAL DE SEGURIDAD */}
             <div className="flex gap-2">
               <button onClick={cerrarSesionAdmin} className="bg-red-500/10 border border-red-500/20 text-red-400 p-2 rounded-xl hover:bg-red-500/20 transition-colors" title="Cerrar sesión segura">
                 <LogOut size={14} />
@@ -496,6 +493,34 @@ export default function HomeCliente() {
             <input type="text" placeholder="Dirección" value={infoLocal.direccion} onChange={e=>setInfoLocal({...infoLocal, direccion: e.target.value})} className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-2.5 px-3 text-xs" />
             <input type="text" placeholder="WhatsApp" value={infoLocal.telefonoWhatsApp} onChange={e=>setInfoLocal({...infoLocal, telefonoWhatsApp: e.target.value})} className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-2.5 px-3 text-xs" />
             <input type="number" placeholder="Envio" value={infoLocal.costoEnvio || ''} onChange={e=>setInfoLocal({...infoLocal, costoEnvio: Number(e.target.value)})} className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-2.5 px-3 text-xs" />
+          </div>
+
+          {/* NUEVO SECTOR: DISEÑO, PORTADA Y AVATAR */}
+          <div className="bg-neutral-800/60 p-4 rounded-2xl border border-neutral-700/30 space-y-4">
+            <h3 className="text-xs font-black text-sky-400 tracking-wider uppercase flex items-center gap-1.5">
+              <Camera size={14}/> Fotos del Negocio
+            </h3>
+            <div className="grid grid-cols-2 gap-4">
+              {/* Botón Portada */}
+              <div className="flex flex-col items-center justify-center p-3 bg-neutral-900/80 rounded-xl border border-neutral-800 text-center relative group">
+                <span className="text-[10px] text-neutral-400 font-bold mb-2">Foto Portada</span>
+                <img src={infoLocal.portadaUrl} className="w-full h-16 rounded-md object-cover opacity-60 mb-2" alt="" />
+                <label className="cursor-pointer bg-neutral-800 hover:bg-neutral-700 text-white font-bold text-[10px] py-1 px-2.5 rounded border border-neutral-700 transition-colors">
+                   Cambiar
+                  <input type="file" accept="image/*" onChange={e => handleFileChange(e, 'portada')} className="hidden" />
+                </label>
+              </div>
+
+              {/* Botón Avatar */}
+              <div className="flex flex-col items-center justify-center p-3 bg-neutral-900/80 rounded-xl border border-neutral-800 text-center relative group">
+                <span className="text-[10px] text-neutral-400 font-bold mb-2">Logo / Perfil</span>
+                <img src={infoLocal.avatarUrl} className="w-12 h-12 rounded-full object-cover border border-sky-400/30 mb-2" alt="" />
+                <label className="cursor-pointer bg-neutral-800 hover:bg-neutral-700 text-white font-bold text-[10px] py-1 px-2.5 rounded border border-neutral-700 transition-colors">
+                   Cambiar
+                  <input type="file" accept="image/*" onChange={e => handleFileChange(e, 'avatar')} className="hidden" />
+                </label>
+              </div>
+            </div>
           </div>
 
           {/* Redes y Cobros */}
