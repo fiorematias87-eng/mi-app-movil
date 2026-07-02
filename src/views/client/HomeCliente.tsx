@@ -4,7 +4,7 @@ import {
   ShoppingBag, ShoppingCart, MessageSquare, MapPin, Plus, Minus, 
   Trash2, Star, User, Phone, Navigation, Settings, X, Edit2, 
   Save, DollarSign, Clock, Calendar, Image, Link, CreditCard, Layers, 
-  ChevronDown, ChevronUp, Search, LogOut, Camera, ExternalLink
+  ChevronDown, ChevronUp, Search, LogOut, Camera, ExternalLink, Eye, EyeOff
 } from 'lucide-react';
 
 // === ESTRUCTURAS DE DATOS VALIDADAS ===
@@ -29,6 +29,7 @@ interface Producto {
   precio: number;
   categoria: string;
   imagen: string;
+  activo?: boolean; // Nuevo campo opcional para controlar stock
 }
 
 interface ItemDelCarrito {
@@ -56,11 +57,11 @@ const infoLocalPorDefecto: InfoLocal = {
 };
 
 const productosPorDefecto: Producto[] = [
-  { id: "p1", nombre: "Pizza Muzzarella", descripcion: "Salsa de tomate artesanal, abundante muzzarella, aceitunas verdes.", precio: 8500, categoria: "pizzas", imagen: "https://images.unsplash.com/photo-1604382354936-07c5d9983bd3?q=80&w=500" },
-  { id: "p2", nombre: "Pizza Fugazzeta", descripcion: "Mucha cebolla, muzzarella de primera calidad, olivas negras.", precio: 9500, categoria: "pizzas", imagen: "https://images.unsplash.com/photo-1513104890138-7c749659a591?q=80&w=500" }
+  { id: "p1", nombre: "Pizza Muzzarella", descripcion: "Salsa de tomate artesanal, abundante muzzarella, aceitunas verdes.", precio: 8500, categoria: "pizzas", imagen: "https://images.unsplash.com/photo-1604382354936-07c5d9983bd3?q=80&w=500", activo: true },
+  { id: "p2", nombre: "Pizza Fugazzeta", descripcion: "Mucha cebolla, muzzarella de primera calidad, olivas negras.", precio: 9500, categoria: "pizzas", imagen: "https://images.unsplash.com/photo-1513104890138-7c749659a591?q=80&w=500", activo: true }
 ];
 
-const categoriasPorDefecto = ["pizzas", "empanadas", "bebidas", "promos"];
+const categoriesPorDefecto = ["pizzas", "empanadas", "bebidas", "promos"];
 
 export default function HomeCliente() {
   // === ESTADOS CON PERSISTENCIA LOCAL STORAGE ===
@@ -71,12 +72,17 @@ export default function HomeCliente() {
 
   const [productos, setProductos] = useState<Producto[]>(() => {
     const guardado = localStorage.getItem('local_productos');
-    return guardado ? JSON.parse(guardado) : productosPorDefecto;
+    if (guardado) {
+      // Nos aseguramos que todos tengan la propiedad 'activo' por defecto si no existía antes
+      const prods = JSON.parse(guardado);
+      return prods.map((p: Producto) => p.activo !== undefined ? p : { ...p, activo: true });
+    }
+    return productosPorDefecto;
   });
 
   const [categorias, setCategorias] = useState<string[]>(() => {
     const guardado = localStorage.getItem('local_categorias');
-    return guardado ? JSON.parse(guardado) : categoriasPorDefecto;
+    return guardado ? JSON.parse(guardado) : categoriesPorDefecto;
   });
 
   const [contadorPedidos, setContadorPedidos] = useState<number>(() => {
@@ -102,6 +108,7 @@ export default function HomeCliente() {
   const [carrito, setCarrito] = useState<ItemDelCarrito[]>([]);
   const [vistaActual, setVistaActual] = useState<'menu' | 'carrito' | 'admin'>('menu');
   const [busqueda, setBusqueda] = useState('');
+  const [busquedaAdmin, setBusquedaAdmin] = useState(''); // Buscador del Admin
 
   // Formulario del cliente
   const [nombre, setNombre] = useState(() => localStorage.getItem('cliente_nombre') || '');
@@ -120,14 +127,14 @@ export default function HomeCliente() {
   useEffect(() => { localStorage.setItem('cliente_gmaps', gmapsLink); }, [gmapsLink]);
 
   // === ESTADOS PARA ACORDEONES DEL ADMIN ===
-  const [seccionAdminAbierta, setSeccionAdminAbierta] = useState<string | null>('caja');
+  const [seccionAdminAbierta, setSeccionAdminAbierta] = useState<string | null>('productos');
 
   // === ESTADOS INTERNOS DEL PANEL ===
   const [editandoProductoId, setEditandoProductoId] = useState<string | null>(null);
   const [nuevaCat, setNuevaCat] = useState('');
   const [mostrarFormularioProd, setMostrarFormularioProd] = useState(false);
   const [categoriaAdminActiva, setCategoriaAdminActiva] = useState(categorias[0] || 'pizzas');
-  const [prodForm, setProdForm] = useState({ nombre: '', descripcion: '', precio: 0, categoria: categorias[0] || 'pizzas', imagen: '' });
+  const [prodForm, setProdForm] = useState({ nombre: '', descripcion: '', precio: 0, categoria: categorias[0] || 'pizzas', imagen: '', activo: true });
 
   useEffect(() => {
     if (categorias.length > 0 && !categorias.includes(prodForm.categoria)) {
@@ -201,15 +208,18 @@ export default function HomeCliente() {
     if (window.confirm("¿Vaciar carrito?")) setCarrito([]);
   };
 
-  // Función combinada de GPS y apertura manual de mapas
+  const toggleActivoProducto = (id: string) => {
+    const listadoActualizado = productos.map(p => p.id === id ? { ...p, activo: p.activo === false ? true : false } : p);
+    setProductos(listadoActualizado);
+    localStorage.setItem('local_productos', JSON.stringify(listadoActualizado));
+  };
+
   const obtenerGeolocalizacion = () => {
-    // Intentar obtener de forma nativa primero
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition((posicion) => {
         setGmapsLink(`https://www.google.com/maps?q=${posicion.coords.latitude},${posicion.coords.longitude}`);
         alert("📍 ¡Ubicación GPS guardada automáticamente de forma exacta!");
       }, () => {
-        // Fallback: abrir google maps para que el usuario copie el link si falla el sensor
         window.open("https://www.google.com/maps", "_blank");
         alert("No se pudo acceder al sensor GPS.\n\nSe abrió Google Maps, buscá tu ubicación, tocá 'Compartir', luego 'Copiar enlace' y pegalo en el casillero.");
       }, { enableHighAccuracy: true });
@@ -285,11 +295,23 @@ export default function HomeCliente() {
   const cantidadTotalProductos = carrito.reduce((acc, item) => acc + item.cantidad, 0);
   const subtotalCarrito = carrito.reduce((acc, item) => acc + (item.precio * item.cantidad), 0);
 
+  // El cliente solo ve productos que estén activos (con stock)
   const productosFiltradosCliente = productos.filter(p => {
+    const estaActivo = p.activo !== false;
     const coincideCategoria = p.categoria === categoriaActiva;
     const coincideBusqueda = p.nombre.toLowerCase().includes(busqueda.toLowerCase()) || 
                              p.descripcion.toLowerCase().includes(busqueda.toLowerCase());
-    return busqueda.trim() !== "" ? coincideBusqueda : (coincideCategoria && coincideBusqueda);
+    return busqueda.trim() !== "" ? (estaActivo && coincideBusqueda) : (estaActivo && coincideCategoria && coincideBusqueda);
+  });
+
+  // Filtrado para la sección de administración (Muestra todo y permite buscar de manera global o por cat)
+  const productosFiltradosAdmin = productos.filter(p => {
+    const coincideBusqueda = p.nombre.toLowerCase().includes(busquedaAdmin.toLowerCase()) || 
+                             p.descripcion.toLowerCase().includes(busquedaAdmin.toLowerCase());
+    if (busquedaAdmin.trim() !== "") {
+      return coincideBusqueda; // Búsqueda total masiva
+    }
+    return p.categoria === categoriaAdminActiva;
   });
 
   return (
@@ -364,24 +386,28 @@ export default function HomeCliente() {
           )}
 
           <div className="px-4 mt-2 space-y-3">
-            {productosFiltradosCliente.map((producto) => (
-              <div key={producto.id} className="bg-neutral-800/80 p-3 rounded-2xl shadow-md flex gap-3 border border-neutral-700/30 items-center justify-between">
-                <img src={producto.imagen} alt={producto.nombre} className="w-20 h-20 rounded-xl object-cover bg-neutral-700 flex-shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <h3 className="font-bold text-white text-base truncate">{producto.nombre}</h3>
-                  <p className="text-xs text-neutral-400 line-clamp-2 mt-0.5">{producto.descripcion}</p>
-                  <div className="flex justify-between items-center mt-2">
-                    <span className="font-black text-yellow-500 text-lg">${producto.precio.toLocaleString('es-AR')}</span>
-                    <button onClick={() => agregarAlCarrito(producto)} className="bg-gradient-to-r from-yellow-400 to-yellow-500 text-neutral-950 p-2 rounded-xl active:scale-95"><ShoppingCart size={15} strokeWidth={3} /></button>
+            {productosFiltradosCliente.length === 0 ? (
+              <p className="text-center py-6 text-neutral-500 text-xs">No hay productos disponibles en esta sección.</p>
+            ) : (
+              productosFiltradosCliente.map((producto) => (
+                <div key={producto.id} className="bg-neutral-800/80 p-3 rounded-2xl shadow-md flex gap-3 border border-neutral-700/30 items-center justify-between">
+                  <img src={producto.imagen} alt={producto.nombre} className="w-20 h-20 rounded-xl object-cover bg-neutral-700 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-bold text-white text-base truncate">{producto.nombre}</h3>
+                    <p className="text-xs text-neutral-400 line-clamp-2 mt-0.5">{producto.descripcion}</p>
+                    <div className="flex justify-between items-center mt-2">
+                      <span className="font-black text-yellow-500 text-lg">${producto.precio.toLocaleString('es-AR')}</span>
+                      <button onClick={() => agregarAlCarrito(producto)} className="bg-gradient-to-r from-yellow-400 to-yellow-500 text-neutral-950 p-2 rounded-xl active:scale-95"><ShoppingCart size={15} strokeWidth={3} /></button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </>
       )}
 
-      {/* VISTA 2: CARRITO & FORMULARIO GPS MEJORADO */}
+      {/* VISTA 2: CARRITO */}
       {vistaActual === 'carrito' && (
         <div className="p-4">
           <div className="flex justify-between items-center mb-6">
@@ -411,7 +437,7 @@ export default function HomeCliente() {
                 ))}
               </div>
 
-              {/* SECTOR DATOS ENTREGA - MEJORADO CON MAPS DE DOBLE VIA */}
+              {/* SECTOR DATOS ENTREGA */}
               <div className="bg-neutral-800/60 p-4 rounded-2xl space-y-3 border border-neutral-700/30">
                 <div className="flex justify-between items-center">
                   <h3 className="text-xs font-black tracking-widest text-sky-400 uppercase">Datos de Entrega</h3>
@@ -464,13 +490,13 @@ export default function HomeCliente() {
         </div>
       )}
 
-      {/* VISTA 3: PANEL ADMINISTRADOR CON ACORDEONES LIMPIOS */}
+      {/* VISTA 3: PANEL ADMINISTRADOR */}
       {vistaActual === 'admin' && (
         <div className="p-4 space-y-4">
           <div className="flex justify-between items-center mb-2">
             <div>
               <h2 className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-amber-500">⚙️ Panel Admin</h2>
-              <span className="text-[11px] text-neutral-500">Distribución Optimizada</span>
+              <span className="text-[11px] text-neutral-500">Manejo Masivo de Stock</span>
             </div>
             <div className="flex gap-2">
               <button onClick={cerrarSesionAdmin} className="bg-red-500/10 border border-red-500/20 text-red-400 p-2 rounded-xl hover:bg-red-500/20"><LogOut size={14} /></button>
@@ -584,7 +610,7 @@ export default function HomeCliente() {
             )}
           </div>
 
-          {/* 6. SECCIÓN ACORDEÓN: CARGA DE ARTÍCULOS */}
+          {/* 6. SECCIÓN ACORDEÓN: GESTIÓN CON BUSCADOR INTERNO Y SWAP DE STOCK */}
           <div className="bg-neutral-800/60 rounded-2xl border border-neutral-700/30 overflow-hidden">
             <button onClick={() => toggleSeccionAdmin('productos')} className="w-full p-4 flex justify-between items-center font-black text-xs uppercase tracking-wider text-emerald-400">
               <span className="flex items-center gap-2"><ShoppingBag size={14}/> Gestión de Productos</span>
@@ -592,6 +618,20 @@ export default function HomeCliente() {
             </button>
             {seccionAdminAbierta === 'productos' && (
               <div className="p-4 pt-3 space-y-4 border-t border-neutral-800/50">
+                
+                {/* BUSCADOR INTERNO DEL ADMINISTRADOR */}
+                <div className="relative">
+                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500" />
+                  <input 
+                    type="text" 
+                    placeholder="Buscar producto por nombre..." 
+                    value={busquedaAdmin}
+                    onChange={e => setBusquedaAdmin(e.target.value)}
+                    className="w-full bg-neutral-950 border border-neutral-800 rounded-xl py-2 pl-9 pr-8 text-xs text-white focus:outline-none focus:border-emerald-500 placeholder-neutral-600"
+                  />
+                  {busquedaAdmin && <X size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 cursor-pointer" onClick={() => setBusquedaAdmin('')} />}
+                </div>
+
                 <div className="flex justify-between items-center bg-neutral-950 p-2.5 rounded-xl border border-neutral-800 cursor-pointer" onClick={() => setMostrarFormularioProd(!mostrarFormularioProd)}>
                   <span className="text-[11px] font-black text-yellow-400 uppercase">{editandoProductoId ? "✏️ Editando Producto" : "➕ Crear Nuevo Artículo"}</span>
                   {mostrarFormularioProd ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
@@ -608,34 +648,52 @@ export default function HomeCliente() {
                     <input type="file" accept="image/*" onChange={e=>handleFileChange(e,'producto')} className="text-[10px]" />
                     <button type="button" disabled={subiendoImagen || !prodForm.nombre || !prodForm.precio} onClick={() => {
                       const imgF = prodForm.imagen.trim() !== "" ? prodForm.imagen : "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?q=80&w=500";
-                      let lN = editandoProductoId ? productos.map(p => p.id === editandoProductoId ? { ...prodForm, imagen: imgF, id: editandoProductoId } : p) : [...productos, { ...prodForm, imagen: imgF, id: 'prod_' + Date.now() }];
+                      let lN = editandoProductoId ? productos.map(p => p.id === editandoProductoId ? { ...prodForm, imagen: imgF, id: editandoProductoId } : p) : [...productos, { ...prodForm, imagen: imgF, id: 'prod_' + Date.now(), activo: true }];
                       setProductos(lN); localStorage.setItem('local_productos', JSON.stringify(lN));
-                      setEditandoProductoId(null); setProdForm({ nombre: '', descripcion: '', precio: 0, categoria: categoriaAdminActiva, imagen: '' }); setMostrarFormularioProd(false);
+                      setEditandoProductoId(null); setProdForm({ nombre: '', descripcion: '', precio: 0, categoria: categoriaAdminActiva, imagen: '', activo: true }); setMostrarFormularioProd(false);
                     }} className="w-full bg-gradient-to-r from-yellow-400 to-yellow-500 text-neutral-950 font-black py-2 rounded-lg text-xs uppercase">Guardar Artículo</button>
                   </div>
                 )}
 
-                <div className="border-t border-neutral-800/80 pt-2">
-                  <div className="flex gap-1.5 overflow-x-auto pb-2 scrollbar-none">
-                    {categorias.map(cat => (
-                      <button key={cat} type="button" onClick={() => setCategoriaAdminActiva(cat)} className={`px-3 py-1.5 rounded-xl capitalize font-bold text-[11px] ${categoriaAdminActiva === cat ? 'bg-sky-500 text-neutral-950' : 'bg-neutral-900 text-neutral-400'}`}>{cat}</button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="space-y-2 max-h-[250px] overflow-y-auto pr-1">
-                  {productos.filter(p => p.categoria === categoriaAdminActiva).map(p => (
-                    <div key={p.id} className="flex items-center justify-between bg-neutral-900/60 p-2 rounded-xl border border-neutral-800 text-xs">
-                      <div className="flex items-center gap-2 truncate">
-                        <img src={p.imagen} className="w-10 h-10 rounded-lg object-cover flex-shrink-0" alt="" />
-                        <div className="truncate"><p className="font-bold text-white truncate">{p.nombre}</p><p className="text-[10px] text-yellow-500 font-black">${p.precio}</p></div>
-                      </div>
-                      <div className="flex gap-1.5 ml-2">
-                        <button onClick={()=>{ setEditandoProductoId(p.id); setProdForm(p); setMostrarFormularioProd(true); }} className="p-2 text-sky-400 bg-neutral-800 rounded-lg"><Edit2 size={12}/></button>
-                        <button onClick={()=>{ if(window.confirm(`¿Eliminar?`)){ const f = productos.filter(pr=>pr.id!==p.id); setProductos(f); localStorage.setItem('local_productos', JSON.stringify(f)); } }} className="p-2 text-red-400 bg-neutral-800 rounded-lg"><Trash2 size={12}/></button>
-                      </div>
+                {/* Si no se está buscando globalmente, se muestran las solapas por categoría */}
+                {!busquedaAdmin.trim() && (
+                  <div className="border-t border-neutral-800/80 pt-2">
+                    <div className="flex gap-1.5 overflow-x-auto pb-2 scrollbar-none">
+                      {categorias.map(cat => (
+                        <button key={cat} type="button" onClick={() => setCategoriaAdminActiva(cat)} className={`px-3 py-1.5 rounded-xl capitalize font-bold text-[11px] ${categoriaAdminActiva === cat ? 'bg-sky-500 text-neutral-950' : 'bg-neutral-900 text-neutral-400'}`}>{cat}</button>
+                      ))}
                     </div>
-                  ))}
+                  </div>
+                )}
+
+                {/* LISTADO DE PRODUCTOS */}
+                <div className="space-y-2 max-h-[250px] overflow-y-auto pr-1">
+                  {productosFiltradosAdmin.length === 0 ? (
+                    <p className="text-center py-4 text-neutral-500 text-[11px]">No se encontraron artículos.</p>
+                  ) : (
+                    productosFiltradosAdmin.map(p => (
+                      <div key={p.id} className={`flex items-center justify-between p-2 rounded-xl border text-xs transition-colors ${p.activo !== false ? 'bg-neutral-900/60 border-neutral-800' : 'bg-neutral-950/40 border-neutral-900 opacity-60'}`}>
+                        <div className="flex items-center gap-2 truncate">
+                          <img src={p.imagen} className="w-10 h-10 rounded-lg object-cover flex-shrink-0" alt="" />
+                          <div className="truncate">
+                            <p className="font-bold text-white truncate flex items-center gap-1">
+                              {p.nombre} 
+                              {p.activo === false && <span className="text-[9px] px-1 bg-red-500/20 text-red-400 font-medium rounded">Pausado</span>}
+                            </p>
+                            <p className="text-[10px] text-yellow-500 font-black">${p.precio}</p>
+                          </div>
+                        </div>
+                        <div className="flex gap-1 ml-2 flex-shrink-0">
+                          {/* Botón Ojo: Pausar/Activar stock */}
+                          <button onClick={() => toggleActivoProducto(p.id)} className={`p-2 rounded-lg transition-colors ${p.activo !== false ? 'text-emerald-400 bg-emerald-950/40' : 'text-red-400 bg-red-950/40'}`}>
+                            {p.activo !== false ? <Eye size={12}/> : <EyeOff size={12}/>}
+                          </button>
+                          <button onClick={()=>{ setEditandoProductoId(p.id); setProdForm({ ...p, activo: p.activo !== false }); setMostrarFormularioProd(true); }} className="p-2 text-sky-400 bg-neutral-800 rounded-lg"><Edit2 size={12}/></button>
+                          <button onClick={()=>{ if(window.confirm(`¿Eliminar?`)){ const f = productos.filter(pr=>pr.id!==p.id); setProductos(f); localStorage.setItem('local_productos', JSON.stringify(f)); } }} className="p-2 text-red-400 bg-neutral-800 rounded-lg"><Trash2 size={12}/></button>
+                        </div>
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
             )}
