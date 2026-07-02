@@ -400,7 +400,8 @@ export default function HomeCliente() {
                   } else {
                     setProductos([...productos, { ...prodForm, id: 'prod_' + Date.now() }]);
                   }
-                  setProdForm({ nombre: '', descripcion: '', precio: 0, categoria: 'pizzas', imagen: 'https://images.unsplash.com/photo-1604382354936-07c5d9983bd3?q=80&w=500' });
+                  // CORRECCIÓN: Limpia el formulario manteniendo vacía la imagen para que use la cargada o la por defecto real en el array
+                  setProdForm({ nombre: '', descripcion: '', precio: 0, categoria: 'pizzas', imagen: '' });
                 }}
                 className="w-full bg-gradient-to-r from-yellow-400 to-yellow-500 text-neutral-950 font-black py-2 rounded-lg text-xs uppercase disabled:opacity-40"
               >
@@ -412,7 +413,7 @@ export default function HomeCliente() {
               {productos.map(p => (
                 <div key={p.id} className="flex items-center justify-between bg-neutral-900/60 p-2 rounded-xl border border-neutral-800 text-xs">
                   <div className="flex items-center gap-2 truncate">
-                    <img src={p.imagen} className="w-8 h-8 rounded object-cover bg-neutral-800 flex-shrink-0" />
+                    <img src={p.imagen || "https://images.unsplash.com/photo-1604382354936-07c5d9983bd3?q=80&w=500"} className="w-8 h-8 rounded object-cover bg-neutral-800 flex-shrink-0" />
                     <div className="truncate"><p className="font-bold text-white truncate">{p.nombre}</p><p className="text-[10px] text-yellow-500">${p.precio}</p></div>
                   </div>
                   <div className="flex gap-2 flex-shrink-0">
