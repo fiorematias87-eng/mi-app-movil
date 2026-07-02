@@ -4,7 +4,7 @@ import {
   ShoppingBag, ShoppingCart, MessageSquare, MapPin, Plus, Minus, 
   Trash2, Star, User, Phone, Navigation, Settings, X, Edit2, 
   Save, DollarSign, Clock, Calendar, Image, Link, CreditCard, Layers, 
-  ChevronDown, ChevronUp, Search, LogOut, Camera
+  ChevronDown, ChevronUp, Search, LogOut, Camera, ExternalLink
 } from 'lucide-react';
 
 // === ESTRUCTURAS DE DATOS VALIDADAS ===
@@ -87,7 +87,6 @@ export default function HomeCliente() {
     return Number(localStorage.getItem('local_caja_acumulada') || "0");
   });
 
-  // Estado de sesión del Administrador (Persistente)
   const [isAdminAutenticado, setIsAdminAutenticado] = useState<boolean>(() => {
     return localStorage.getItem('admin_sesion_activa') === 'true';
   });
@@ -102,11 +101,9 @@ export default function HomeCliente() {
   const [categoriaActiva, setCategoriaActiva] = useState(categorias[0] || 'pizzas');
   const [carrito, setCarrito] = useState<ItemDelCarrito[]>([]);
   const [vistaActual, setVistaActual] = useState<'menu' | 'carrito' | 'admin'>('menu');
-  
-  // Estado del buscador del cliente
   const [busqueda, setBusqueda] = useState('');
 
-  // Formulario del cliente con Persistencia
+  // Formulario del cliente
   const [nombre, setNombre] = useState(() => localStorage.getItem('cliente_nombre') || '');
   const [telefono, setTelefono] = useState(() => localStorage.getItem('cliente_telefono') || '');
   const [direccion, setDireccion] = useState(() => localStorage.getItem('cliente_direccion') || '');
@@ -121,6 +118,9 @@ export default function HomeCliente() {
   useEffect(() => { localStorage.setItem('cliente_direccion', direccion); }, [direccion]);
   useEffect(() => { localStorage.setItem('cliente_entrecalles', entreCalles); }, [entreCalles]);
   useEffect(() => { localStorage.setItem('cliente_gmaps', gmapsLink); }, [gmapsLink]);
+
+  // === ESTADOS PARA ACORDEONES DEL ADMIN ===
+  const [seccionAdminAbierta, setSeccionAdminAbierta] = useState<string | null>('caja');
 
   // === ESTADOS INTERNOS DEL PANEL ===
   const [editandoProductoId, setEditandoProductoId] = useState<string | null>(null);
@@ -201,12 +201,21 @@ export default function HomeCliente() {
     if (window.confirm("¿Vaciar carrito?")) setCarrito([]);
   };
 
+  // Función combinada de GPS y apertura manual de mapas
   const obtenerGeolocalizacion = () => {
-    if (!navigator.geolocation) return;
-    navigator.geolocation.getCurrentPosition((posicion) => {
-      setGmapsLink(`https://www.google.com/maps?q=${posicion.coords.latitude},${posicion.coords.longitude}`);
-      alert("📍 ¡Ubicación GPS guardada correctamente!");
-    }, () => alert("No se pudo obtener el GPS."), { enableHighAccuracy: true });
+    // Intentar obtener de forma nativa primero
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition((posicion) => {
+        setGmapsLink(`https://www.google.com/maps?q=${posicion.coords.latitude},${posicion.coords.longitude}`);
+        alert("📍 ¡Ubicación GPS guardada automáticamente de forma exacta!");
+      }, () => {
+        // Fallback: abrir google maps para que el usuario copie el link si falla el sensor
+        window.open("https://www.google.com/maps", "_blank");
+        alert("No se pudo acceder al sensor GPS.\n\nSe abrió Google Maps, buscá tu ubicación, tocá 'Compartir', luego 'Copiar enlace' y pegalo en el casillero.");
+      }, { enableHighAccuracy: true });
+    } else {
+      window.open("https://www.google.com/maps", "_blank");
+    }
   };
 
   const enviarPedidoWhatsApp = (e: React.FormEvent) => {
@@ -246,7 +255,6 @@ export default function HomeCliente() {
     localStorage.setItem('local_pedidos_count', "0"); localStorage.setItem('local_caja_acumulada', "0");
   };
 
-  // Función de ingreso rápido o inteligente al admin
   const accederAlAdminSeguro = () => {
     if (isAdminAutenticado) {
       setVistaActual('admin');
@@ -263,22 +271,24 @@ export default function HomeCliente() {
   };
 
   const cerrarSesionAdmin = () => {
-    if (window.confirm("¿Querés cerrar sesión en este dispositivo? Te volverá a pedir la clave la próxima vez.")) {
+    if (window.confirm("¿Querés cerrar sesión en este dispositivo?")) {
       setIsAdminAutenticado(false);
       localStorage.removeItem('admin_sesion_activa');
       setVistaActual('menu');
     }
   };
 
+  const toggleSeccionAdmin = (seccion: string) => {
+    setSeccionAdminAbierta(seccionAdminAbierta === seccion ? null : seccion);
+  };
+
   const cantidadTotalProductos = carrito.reduce((acc, item) => acc + item.cantidad, 0);
   const subtotalCarrito = carrito.reduce((acc, item) => acc + (item.precio * item.cantidad), 0);
 
-  // LOGICA FILTRADO DE PRODUCTOS EN EL CLIENTE
   const productosFiltradosCliente = productos.filter(p => {
     const coincideCategoria = p.categoria === categoriaActiva;
     const coincideBusqueda = p.nombre.toLowerCase().includes(busqueda.toLowerCase()) || 
                              p.descripcion.toLowerCase().includes(busqueda.toLowerCase());
-    
     return busqueda.trim() !== "" ? coincideBusqueda : (coincideCategoria && coincideBusqueda);
   });
 
@@ -287,7 +297,7 @@ export default function HomeCliente() {
       
       {subiendoImagen && (
         <div className="fixed top-4 left-1/2 -translate-x-1/2 bg-sky-500 text-neutral-950 px-5 py-2.5 rounded-full font-black text-xs z-50 shadow-xl">
-          ⏳ Guardando foto en la nube...
+          ⏳ Guardando en la nube...
         </div>
       )}
 
@@ -329,7 +339,6 @@ export default function HomeCliente() {
             <div className="flex items-center gap-1 mt-3 text-xs text-sky-400 font-semibold bg-sky-950/40 px-3 py-1 rounded-full border border-sky-900/40"><MapPin size={13} /><span>{infoLocal.direccion}</span></div>
           </div>
 
-          {/* BARRA DE BÚSQUEDA INTERACTIVA */}
           <div className="px-4 py-2">
             <div className="relative">
               <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-500" />
@@ -340,16 +349,10 @@ export default function HomeCliente() {
                 onChange={e => setBusqueda(e.target.value)}
                 className="w-full bg-neutral-800/90 border border-neutral-750 rounded-xl py-2.5 pl-10 pr-8 text-xs text-white focus:outline-none focus:border-sky-400 transition-colors placeholder-neutral-500"
               />
-              {busqueda && (
-                <X size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 cursor-pointer" onClick={() => setBusqueda('')} />
-              )}
+              {busqueda && <X size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 cursor-pointer" onClick={() => setBusqueda('')} />}
             </div>
-            {busqueda.trim() !== "" && (
-              <p className="text-[10px] text-sky-400 mt-1 font-bold">🔍 Mostrando resultados globales para: "{busqueda}"</p>
-            )}
           </div>
 
-          {/* SECTOR CATEGORÍAS */}
           {busqueda.trim() === "" && (
             <div className="flex gap-2 overflow-x-auto px-4 py-2 sticky top-0 bg-neutral-900/90 backdrop-blur-md z-10 scrollbar-none">
               {categorias.map((cat) => (
@@ -360,10 +363,9 @@ export default function HomeCliente() {
             </div>
           )}
 
-          {/* LISTA PRODUCTOS */}
           <div className="px-4 mt-2 space-y-3">
             {productosFiltradosCliente.map((producto) => (
-              <div key={producto.id} className="bg-neutral-800/80 p-3 rounded-2xl shadow-md flex gap-3 border border-neutral-700/30 items-center justify-between animate-fade-in">
+              <div key={producto.id} className="bg-neutral-800/80 p-3 rounded-2xl shadow-md flex gap-3 border border-neutral-700/30 items-center justify-between">
                 <img src={producto.imagen} alt={producto.nombre} className="w-20 h-20 rounded-xl object-cover bg-neutral-700 flex-shrink-0" />
                 <div className="flex-1 min-w-0">
                   <h3 className="font-bold text-white text-base truncate">{producto.nombre}</h3>
@@ -375,14 +377,11 @@ export default function HomeCliente() {
                 </div>
               </div>
             ))}
-            {productosFiltradosCliente.length === 0 && (
-              <p className="text-center text-neutral-500 text-xs py-12">No se encontró ningún artículo coincidente.</p>
-            )}
           </div>
         </>
       )}
 
-      {/* VISTA 2: CARRITO */}
+      {/* VISTA 2: CARRITO & FORMULARIO GPS MEJORADO */}
       {vistaActual === 'carrito' && (
         <div className="p-4">
           <div className="flex justify-between items-center mb-6">
@@ -412,15 +411,30 @@ export default function HomeCliente() {
                 ))}
               </div>
 
+              {/* SECTOR DATOS ENTREGA - MEJORADO CON MAPS DE DOBLE VIA */}
               <div className="bg-neutral-800/60 p-4 rounded-2xl space-y-3 border border-neutral-700/30">
                 <div className="flex justify-between items-center">
                   <h3 className="text-xs font-black tracking-widest text-sky-400 uppercase">Datos de Entrega</h3>
-                  <button type="button" onClick={obtenerGeolocalizacion} className="flex items-center gap-1 text-[11px] font-black bg-sky-500 text-neutral-950 px-2.5 py-1 rounded-lg">📍 Ubicación GPS</button>
+                  <button type="button" onClick={obtenerGeolocalizacion} className="flex items-center gap-1 text-[11px] font-black bg-gradient-to-r from-sky-400 to-sky-500 text-neutral-950 px-3 py-1.5 rounded-xl shadow-md">
+                    📍 Ubicación o Abrir Maps <ExternalLink size={11} />
+                  </button>
                 </div>
-                <input type="text" placeholder="Nombre y Apellido" value={nombre} onChange={e=>setNombre(e.target.value)} className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-3 px-4 text-sm text-white" required />
-                <input type="tel" placeholder="Teléfono" value={telefono} onChange={e=>setTelefono(e.target.value)} className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-3 px-4 text-sm text-white" required />
-                <input type="text" placeholder="Dirección" value={direccion} onChange={e=>setDireccion(e.target.value)} className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-3 px-4 text-sm text-white" required />
-                <input type="text" placeholder="¿Entre qué calles?" value={entreCalles} onChange={e=>setEntreCalles(e.target.value)} className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-3 px-4 text-sm text-white" required />
+                
+                <input type="text" placeholder="Nombre y Apellido" value={nombre} onChange={e=>setNombre(e.target.value)} className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-3 px-4 text-sm text-white focus:border-sky-400 focus:outline-none" required />
+                <input type="tel" placeholder="Teléfono de contacto" value={telefono} onChange={e=>setTelefono(e.target.value)} className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-3 px-4 text-sm text-white focus:border-sky-400 focus:outline-none" required />
+                <input type="text" placeholder="Calle y Número (Ej: Av Belgrano 450)" value={direccion} onChange={e=>setDireccion(e.target.value)} className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-3 px-4 text-sm text-white focus:border-sky-400 focus:outline-none" required />
+                <input type="text" placeholder="¿Entre qué calles o indicaciones?" value={entreCalles} onChange={e=>setEntreCalles(e.target.value)} className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-3 px-4 text-sm text-white focus:border-sky-400 focus:outline-none" required />
+                
+                <div className="pt-1">
+                  <label className="text-[10px] text-neutral-400 font-bold block mb-1">Link de Google Maps (Opcional/Pegar si abriste la app):</label>
+                  <input 
+                    type="text" 
+                    placeholder="Pegá acá el enlace de tu ubicación..." 
+                    value={gmapsLink} 
+                    onChange={e=>setGmapsLink(e.target.value)} 
+                    className="w-full bg-neutral-950/60 border border-neutral-800 rounded-xl py-2 px-3 text-xs text-sky-400 placeholder-neutral-600 focus:outline-none" 
+                  />
+                </div>
               </div>
 
               <div className="bg-neutral-800/60 p-4 rounded-2xl space-y-4 border border-neutral-700/30">
@@ -430,12 +444,10 @@ export default function HomeCliente() {
                   <button type="button" onClick={() => setMetodoPago('transferencia')} className={`py-3 px-4 rounded-xl border font-bold text-xs uppercase ${metodoPago === 'transferencia' ? 'bg-sky-950/40 border-sky-400 text-sky-400' : 'bg-neutral-900/60 border-neutral-700 text-neutral-400'}`}>📱 Transferencia</button>
                 </div>
                 {metodoPago === 'efectivo' ? (
-                  <div className="pt-1">
-                    <input type="number" placeholder="¿Con cuánto vas a pagar? (Para vuelto)" value={pagaCon} onChange={e=>setPagaCon(e.target.value)} className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-2.5 px-4 text-sm text-white" />
-                  </div>
+                  <input type="number" placeholder="¿Con cuánto vas a pagar? (Para vuelto)" value={pagaCon} onChange={e=>setPagaCon(e.target.value)} className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-2.5 px-4 text-sm text-white" />
                 ) : (
-                  <div className="bg-neutral-900/80 p-3 rounded-xl text-xs space-y-1 text-neutral-300">
-                    <p className="font-bold text-yellow-500">Datos:</p>
+                  <div className="bg-neutral-900/80 p-3 rounded-xl text-xs text-neutral-300">
+                    <p className="font-bold text-yellow-500">Datos de transferencia:</p>
                     <p>Alias: {infoLocal.alias}</p><p>CVU: {infoLocal.cbuCvu}</p>
                   </div>
                 )}
@@ -446,157 +458,187 @@ export default function HomeCliente() {
                 <div className="flex justify-between text-neutral-400"><span>Envío:</span><span>${infoLocal.costoEnvio.toLocaleString('es-AR')}</span></div>
                 <div className="flex justify-between font-black text-white text-base mt-2"><span>Total Final:</span><span className="text-yellow-500">${(subtotalCarrito + infoLocal.costoEnvio).toLocaleString('es-AR')}</span></div>
               </div>
-              <button type="submit" className="w-full bg-emerald-500 text-neutral-950 font-black py-4 rounded-2xl flex items-center justify-center gap-2"><MessageSquare size={18} fill="currentColor" />Enviar por WhatsApp</button>
+              <button type="submit" className="w-full bg-emerald-500 text-neutral-950 font-black py-4 rounded-2xl flex items-center justify-center gap-2 shadow-lg"><MessageSquare size={18} fill="currentColor" />Enviar por WhatsApp</button>
             </form>
           )}
         </div>
       )}
 
-      {/* VISTA 3: PANEL DE CONTROL DE ADMINISTRADOR */}
+      {/* VISTA 3: PANEL ADMINISTRADOR CON ACORDEONES LIMPIOS */}
       {vistaActual === 'admin' && (
-        <div className="p-4 space-y-6">
-          <div className="flex justify-between items-center">
-            <div className="flex flex-col">
-              <h2 className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-amber-500">⚙️ Panel de Control</h2>
-              <span className="text-[11px] text-neutral-500">Admin Activo</span>
+        <div className="p-4 space-y-4">
+          <div className="flex justify-between items-center mb-2">
+            <div>
+              <h2 className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-amber-500">⚙️ Panel Admin</h2>
+              <span className="text-[11px] text-neutral-500">Distribución Optimizada</span>
             </div>
-            
             <div className="flex gap-2">
-              <button onClick={cerrarSesionAdmin} className="bg-red-500/10 border border-red-500/20 text-red-400 p-2 rounded-xl hover:bg-red-500/20 transition-colors" title="Cerrar sesión segura">
-                <LogOut size={14} />
-              </button>
-              <button onClick={() => setVistaActual('menu')} className="bg-neutral-800 text-white font-bold py-2 px-3 rounded-xl text-xs">Salir</button>
+              <button onClick={cerrarSesionAdmin} className="bg-red-500/10 border border-red-500/20 text-red-400 p-2 rounded-xl hover:bg-red-500/20"><LogOut size={14} /></button>
+              <button onClick={() => setVistaActual('menu')} className="bg-neutral-800 text-white font-bold py-2 px-3 rounded-xl text-xs">Menu</button>
             </div>
           </div>
 
-          {/* Cierre de Caja */}
-          <div className="bg-gradient-to-br from-neutral-800 to-neutral-850 p-4 rounded-2xl border border-neutral-700/50 space-y-4">
-            <h3 className="text-xs font-black text-yellow-500 tracking-wider uppercase flex items-center gap-1.5"><DollarSign size={14}/> Cierre de Caja</h3>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="bg-neutral-900/60 p-3 rounded-xl border border-neutral-800">
-                <p className="text-[10px] text-neutral-500 font-bold uppercase">Pedidos</p>
-                <p className="text-2xl font-black text-sky-400 mt-1">{contadorPedidos}</p>
-              </div>
-              <div className="bg-neutral-900/60 p-3 rounded-xl border border-neutral-800">
-                <p className="text-[10px] text-neutral-500 font-bold uppercase">Total</p>
-                <p className="text-xl font-black text-emerald-400 mt-1">${cajaAcumulada.toLocaleString('es-AR')}</p>
-              </div>
-            </div>
-            <button onClick={ejecutarCierreCaja} className="w-full bg-red-500/10 text-red-400 border border-red-500/30 font-bold py-2.5 rounded-xl text-xs uppercase tracking-wider">Efectuar Cierre</button>
-          </div>
-
-          {/* Datos del Comercio */}
-          <div className="bg-neutral-800/60 p-4 rounded-2xl border border-neutral-700/30 space-y-3">
-            <h3 className="text-xs font-black text-sky-400 tracking-wider uppercase flex items-center gap-1.5"><User size={14}/> Datos Básicos</h3>
-            <input type="text" placeholder="Nombre" value={infoLocal.nombre} onChange={e=>setInfoLocal({...infoLocal, nombre: e.target.value})} className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-2.5 px-3 text-xs" />
-            <textarea placeholder="Descripción" value={infoLocal.descripcion} onChange={e=>setInfoLocal({...infoLocal, descripcion: e.target.value})} className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-2.5 px-3 text-xs h-16" />
-            <input type="text" placeholder="Dirección" value={infoLocal.direccion} onChange={e=>setInfoLocal({...infoLocal, direccion: e.target.value})} className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-2.5 px-3 text-xs" />
-            <input type="text" placeholder="WhatsApp" value={infoLocal.telefonoWhatsApp} onChange={e=>setInfoLocal({...infoLocal, telefonoWhatsApp: e.target.value})} className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-2.5 px-3 text-xs" />
-            <input type="number" placeholder="Envio" value={infoLocal.costoEnvio || ''} onChange={e=>setInfoLocal({...infoLocal, costoEnvio: Number(e.target.value)})} className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-2.5 px-3 text-xs" />
-          </div>
-
-          {/* NUEVO SECTOR: DISEÑO, PORTADA Y AVATAR */}
-          <div className="bg-neutral-800/60 p-4 rounded-2xl border border-neutral-700/30 space-y-4">
-            <h3 className="text-xs font-black text-sky-400 tracking-wider uppercase flex items-center gap-1.5">
-              <Camera size={14}/> Fotos del Negocio
-            </h3>
-            <div className="grid grid-cols-2 gap-4">
-              {/* Botón Portada */}
-              <div className="flex flex-col items-center justify-center p-3 bg-neutral-900/80 rounded-xl border border-neutral-800 text-center relative group">
-                <span className="text-[10px] text-neutral-400 font-bold mb-2">Foto Portada</span>
-                <img src={infoLocal.portadaUrl} className="w-full h-16 rounded-md object-cover opacity-60 mb-2" alt="" />
-                <label className="cursor-pointer bg-neutral-800 hover:bg-neutral-700 text-white font-bold text-[10px] py-1 px-2.5 rounded border border-neutral-700 transition-colors">
-                   Cambiar
-                  <input type="file" accept="image/*" onChange={e => handleFileChange(e, 'portada')} className="hidden" />
-                </label>
-              </div>
-
-              {/* Botón Avatar */}
-              <div className="flex flex-col items-center justify-center p-3 bg-neutral-900/80 rounded-xl border border-neutral-800 text-center relative group">
-                <span className="text-[10px] text-neutral-400 font-bold mb-2">Logo / Perfil</span>
-                <img src={infoLocal.avatarUrl} className="w-12 h-12 rounded-full object-cover border border-sky-400/30 mb-2" alt="" />
-                <label className="cursor-pointer bg-neutral-800 hover:bg-neutral-700 text-white font-bold text-[10px] py-1 px-2.5 rounded border border-neutral-700 transition-colors">
-                   Cambiar
-                  <input type="file" accept="image/*" onChange={e => handleFileChange(e, 'avatar')} className="hidden" />
-                </label>
-              </div>
-            </div>
-          </div>
-
-          {/* Redes y Cobros */}
-          <div className="bg-neutral-800/60 p-4 rounded-2xl border border-neutral-700/30 space-y-3">
-            <h3 className="text-xs font-black text-sky-400 tracking-wider uppercase flex items-center gap-1.5"><CreditCard size={14}/> Cobros</h3>
-            <input type="text" placeholder="CVU" value={infoLocal.cbuCvu} onChange={e=>setInfoLocal({...infoLocal, cbuCvu: e.target.value})} className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-2.5 px-3 text-xs" />
-            <input type="text" placeholder="Alias" value={infoLocal.alias} onChange={e=>setInfoLocal({...infoLocal, alias: e.target.value})} className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-2.5 px-3 text-xs" />
-          </div>
-
-          {/* Categorías */}
-          <div className="bg-neutral-800/60 p-4 rounded-2xl border border-neutral-700/30 space-y-3">
-            <h3 className="text-xs font-black text-sky-400 tracking-wider uppercase flex items-center gap-1.5"><Layers size={14}/> Secciones / Categorías</h3>
-            <div className="flex gap-2">
-              <input type="text" placeholder="Nueva sección" value={nuevaCat} onChange={e=>setNuevaCat(e.target.value)} className="flex-1 bg-neutral-900 border border-neutral-700 rounded-xl py-2 px-3 text-xs" />
-              <button type="button" onClick={()=>{ if(nuevaCat){ const n = nuevaCat.toLowerCase().trim(); setCategorias([...categorias, n]); setNuevaCat(''); } }} className="bg-sky-500 text-neutral-950 px-4 rounded-xl text-xs font-black">+</button>
-            </div>
-            <div className="flex flex-wrap gap-1.5 pt-1">
-              {categorias.map(cat => {
-                const count = productos.filter(p => p.categoria === cat).length;
-                return (
-                  <span key={cat} className="bg-neutral-900 text-neutral-400 text-[10px] font-bold px-2.5 py-1 rounded-md border border-neutral-700 flex items-center gap-1 capitalize">
-                    {cat} <span className="text-sky-400">({count})</span>
-                    <X size={10} className="text-red-400 cursor-pointer" onClick={()=>{ if(window.confirm(`¿Borrar "${cat}"?`)) setCategorias(categorias.filter(c=>c!==cat)); }} />
-                  </span>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Cargar Comidas / Artículos */}
-          <div className="bg-neutral-800/60 p-4 rounded-2xl border border-neutral-700/30 space-y-4">
-            <div className="flex justify-between items-center cursor-pointer bg-neutral-900 p-3 rounded-xl border border-neutral-800" onClick={() => setMostrarFormularioProd(!mostrarFormularioProd)}>
-              <span className="text-xs font-black text-yellow-400 uppercase flex items-center gap-1.5"><ShoppingBag size={13}/> {editandoProductoId ? "✏️ Modificando" : "➕ Cargar Artículo"}</span>
-              {mostrarFormularioProd ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-            </div>
-
-            {mostrarFormularioProd && (
-              <div className="bg-neutral-950 p-3 rounded-xl border border-neutral-800 space-y-2">
-                <input type="text" placeholder="Nombre" value={prodForm.nombre} onChange={e=>setProdForm({...prodForm, nombre: e.target.value})} className="w-full bg-neutral-800 border border-neutral-700 rounded-lg py-1.5 px-3 text-xs" />
-                <input type="text" placeholder="Detalles / Talles" value={prodForm.descripcion} onChange={e=>setProdForm({...prodForm, descripcion: e.target.value})} className="w-full bg-neutral-800 border border-neutral-700 rounded-lg py-1.5 px-3 text-xs" />
-                <input type="number" placeholder="Precio ($)" value={prodForm.precio || ''} onChange={e=>setProdForm({...prodForm, precio: Number(e.target.value)})} className="w-full bg-neutral-800 border border-neutral-700 rounded-lg py-1.5 px-3 text-xs" />
-                <select value={prodForm.categoria} onChange={e=>setProdForm({...prodForm, categoria: e.target.value})} className="w-full bg-neutral-800 border border-neutral-700 rounded-lg py-1.5 px-3 text-xs capitalize text-white">
-                  {categorias.map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
-                <input type="file" accept="image/*" onChange={e=>handleFileChange(e,'producto')} className="text-[10px]" />
-                <button type="button" disabled={subiendoImagen || !prodForm.nombre || !prodForm.precio} onClick={() => {
-                  const imgF = prodForm.imagen.trim() !== "" ? prodForm.imagen : "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?q=80&w=500";
-                  let lN = editandoProductoId ? productos.map(p => p.id === editandoProductoId ? { ...prodForm, imagen: imgF, id: editandoProductoId } : p) : [...productos, { ...prodForm, imagen: imgF, id: 'prod_' + Date.now() }];
-                  setProductos(lN); localStorage.setItem('local_productos', JSON.stringify(lN));
-                  setEditandoProductoId(null); setProdForm({ nombre: '', descripcion: '', precio: 0, categoria: categoriaAdminActiva, imagen: '' }); setMostrarFormularioProd(false);
-                }} className="w-full bg-gradient-to-r from-yellow-400 to-yellow-500 text-neutral-950 font-black py-2 rounded-lg text-xs uppercase font-bold">Guardar</button>
-              </div>
-            )}
-
-            <div className="border-t border-neutral-700/40 pt-2">
-              <div className="flex gap-1.5 overflow-x-auto pb-2 scrollbar-none">
-                {categorias.map(cat => (
-                  <button key={cat} type="button" onClick={() => setCategoriaAdminActiva(cat)} className={`px-3 py-1.5 rounded-xl capitalize font-bold text-[11px] ${categoriaAdminActiva === cat ? 'bg-sky-500 text-neutral-950' : 'bg-neutral-900 text-neutral-400'}`}>{cat}</button>
-                ))}
-              </div>
-            </div>
-
-            <div className="space-y-2 max-h-[350px] overflow-y-auto">
-              {productos.filter(p => p.categoria === categoriaAdminActiva).map(p => (
-                <div key={p.id} className="flex items-center justify-between bg-neutral-900/60 p-2 rounded-xl border border-neutral-800 text-xs">
-                  <div className="flex items-center gap-2 truncate">
-                    <img src={p.imagen} className="w-10 h-10 rounded-lg object-cover flex-shrink-0" alt="" />
-                    <div className="truncate"><p className="font-bold text-white truncate">{p.nombre}</p><p className="text-[10px] text-yellow-500 font-black">${p.precio}</p></div>
+          {/* 1. SECCIÓN ACORDEÓN: CAJA */}
+          <div className="bg-neutral-800/60 rounded-2xl border border-neutral-700/30 overflow-hidden">
+            <button onClick={() => toggleSeccionAdmin('caja')} className="w-full p-4 flex justify-between items-center font-black text-xs uppercase tracking-wider text-yellow-500">
+              <span className="flex items-center gap-2"><DollarSign size={14}/> Cierre de Caja y Métricas</span>
+              {seccionAdminAbierta === 'caja' ? <ChevronUp size={16}/> : <ChevronDown size={16}/>}
+            </button>
+            {seccionAdminAbierta === 'caja' && (
+              <div className="p-4 pt-0 space-y-3 border-t border-neutral-800/50">
+                <div className="grid grid-cols-2 gap-3 mt-3">
+                  <div className="bg-neutral-900/90 p-3 rounded-xl border border-neutral-800">
+                    <p className="text-[10px] text-neutral-500 font-bold uppercase">Pedidos en Turno</p>
+                    <p className="text-2xl font-black text-sky-400 mt-1">{contadorPedidos}</p>
                   </div>
-                  <div className="flex gap-1.5 ml-2">
-                    <button onClick={()=>{ setEditandoProductoId(p.id); setProdForm(p); setMostrarFormularioProd(true); }} className="p-2 text-sky-400 bg-neutral-800 rounded-lg"><Edit2 size={12}/></button>
-                    <button onClick={()=>{ if(window.confirm(`¿Eliminar?`)){ const f = productos.filter(pr=>pr.id!==p.id); setProductos(f); localStorage.setItem('local_productos', JSON.stringify(f)); } }} className="p-2 text-red-400 bg-neutral-800 rounded-lg"><Trash2 size={12}/></button>
+                  <div className="bg-neutral-900/90 p-3 rounded-xl border border-neutral-800">
+                    <p className="text-[10px] text-neutral-500 font-bold uppercase">Total Recaudado</p>
+                    <p className="text-xl font-black text-emerald-400 mt-1">${cajaAcumulada.toLocaleString('es-AR')}</p>
                   </div>
                 </div>
-              ))}
-            </div>
+                <button onClick={ejecutarCierreCaja} className="w-full bg-red-500/10 text-red-400 border border-red-500/30 font-bold py-2.5 rounded-xl text-xs uppercase tracking-wider">Efectuar Cierre de Turno</button>
+              </div>
+            )}
+          </div>
+
+          {/* 2. SECCIÓN ACORDEÓN: DATOS BÁSICOS */}
+          <div className="bg-neutral-800/60 rounded-2xl border border-neutral-700/30 overflow-hidden">
+            <button onClick={() => toggleSeccionAdmin('datos')} className="w-full p-4 flex justify-between items-center font-black text-xs uppercase tracking-wider text-sky-400">
+              <span className="flex items-center gap-2"><User size={14}/> Información del Comercio</span>
+              {seccionAdminAbierta === 'datos' ? <ChevronUp size={16}/> : <ChevronDown size={16}/>}
+            </button>
+            {seccionAdminAbierta === 'datos' && (
+              <div className="p-4 pt-3 space-y-3 border-t border-neutral-800/50">
+                <input type="text" placeholder="Nombre del Local" value={infoLocal.nombre} onChange={e=>setInfoLocal({...infoLocal, nombre: e.target.value})} className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-2.5 px-3 text-xs text-white" />
+                <textarea placeholder="Descripción / Slogan" value={infoLocal.descripcion} onChange={e=>setInfoLocal({...infoLocal, descripcion: e.target.value})} className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-2.5 px-3 text-xs h-16 text-white" />
+                <input type="text" placeholder="Dirección Comercial" value={infoLocal.direccion} onChange={e=>setInfoLocal({...infoLocal, direccion: e.target.value})} className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-2.5 px-3 text-xs text-white" />
+                <input type="text" placeholder="WhatsApp (Con código de área, ej: 549...)" value={infoLocal.telefonoWhatsApp} onChange={e=>setInfoLocal({...infoLocal, telefonoWhatsApp: e.target.value})} className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-2.5 px-3 text-xs text-white" />
+                <input type="number" placeholder="Costo de Envío Fijo ($)" value={infoLocal.costoEnvio || ''} onChange={e=>setInfoLocal({...infoLocal, costoEnvio: Number(e.target.value)})} className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-2.5 px-3 text-xs text-white" />
+              </div>
+            )}
+          </div>
+
+          {/* 3. SECCIÓN ACORDEÓN: DISEÑO & FOTOS */}
+          <div className="bg-neutral-800/60 rounded-2xl border border-neutral-700/30 overflow-hidden">
+            <button onClick={() => toggleSeccionAdmin('fotos')} className="w-full p-4 flex justify-between items-center font-black text-xs uppercase tracking-wider text-sky-400">
+              <span className="flex items-center gap-2"><Camera size={14}/> Identidad Visual e Imágenes</span>
+              {seccionAdminAbierta === 'fotos' ? <ChevronUp size={16}/> : <ChevronDown size={16}/>}
+            </button>
+            {seccionAdminAbierta === 'fotos' && (
+              <div className="p-4 pt-3 grid grid-cols-2 gap-4 border-t border-neutral-800/50">
+                <div className="flex flex-col items-center justify-center p-3 bg-neutral-900/80 rounded-xl border border-neutral-800 text-center">
+                  <span className="text-[10px] text-neutral-400 font-bold mb-2">Foto Portada</span>
+                  <img src={infoLocal.portadaUrl} className="w-full h-16 rounded-md object-cover opacity-60 mb-2" alt="" />
+                  <label className="cursor-pointer bg-neutral-800 hover:bg-neutral-700 text-white font-bold text-[10px] py-1 px-2.5 rounded border border-neutral-700 transition-colors">
+                     Cambiar
+                    <input type="file" accept="image/*" onChange={e => handleFileChange(e, 'portada')} className="hidden" />
+                  </label>
+                </div>
+                <div className="flex flex-col items-center justify-center p-3 bg-neutral-900/80 rounded-xl border border-neutral-800 text-center">
+                  <span className="text-[10px] text-neutral-400 font-bold mb-2">Logo / Perfil</span>
+                  <img src={infoLocal.avatarUrl} className="w-12 h-12 rounded-full object-cover border border-sky-400/30 mb-2" alt="" />
+                  <label className="cursor-pointer bg-neutral-800 hover:bg-neutral-700 text-white font-bold text-[10px] py-1 px-2.5 rounded border border-neutral-700 transition-colors">
+                     Cambiar
+                    <input type="file" accept="image/*" onChange={e => handleFileChange(e, 'avatar')} className="hidden" />
+                  </label>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* 4. SECCIÓN ACORDEÓN: COBROS */}
+          <div className="bg-neutral-800/60 rounded-2xl border border-neutral-700/30 overflow-hidden">
+            <button onClick={() => toggleSeccionAdmin('cobros')} className="w-full p-4 flex justify-between items-center font-black text-xs uppercase tracking-wider text-sky-400">
+              <span className="flex items-center gap-2"><CreditCard size={14}/> Cuentas de Transferencia</span>
+              {seccionAdminAbierta === 'cobros' ? <ChevronUp size={16}/> : <ChevronDown size={16}/>}
+            </button>
+            {seccionAdminAbierta === 'cobros' && (
+              <div className="p-4 pt-3 space-y-3 border-t border-neutral-800/50">
+                <input type="text" placeholder="CBU / CVU Bancario" value={infoLocal.cbuCvu} onChange={e=>setInfoLocal({...infoLocal, cbuCvu: e.target.value})} className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-2.5 px-3 text-xs text-white" />
+                <input type="text" placeholder="Alias de Cuenta" value={infoLocal.alias} onChange={e=>setInfoLocal({...infoLocal, alias: e.target.value})} className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-2.5 px-3 text-xs text-white" />
+              </div>
+            )}
+          </div>
+
+          {/* 5. SECCIÓN ACORDEÓN: CATEGORÍAS */}
+          <div className="bg-neutral-800/60 rounded-2xl border border-neutral-700/30 overflow-hidden">
+            <button onClick={() => toggleSeccionAdmin('categorias')} className="w-full p-4 flex justify-between items-center font-black text-xs uppercase tracking-wider text-sky-400">
+              <span className="flex items-center gap-2"><Layers size={14}/> Estructura de Secciones</span>
+              {seccionAdminAbierta === 'categorias' ? <ChevronUp size={16}/> : <ChevronDown size={16}/>}
+            </button>
+            {seccionAdminAbierta === 'categorias' && (
+              <div className="p-4 pt-3 space-y-3 border-t border-neutral-800/50">
+                <div className="flex gap-2">
+                  <input type="text" placeholder="Agregar nueva sección (Ej: postres)" value={nuevaCat} onChange={e=>setNuevaCat(e.target.value)} className="flex-1 bg-neutral-900 border border-neutral-700 rounded-xl py-2 px-3 text-xs text-white" />
+                  <button type="button" onClick={()=>{ if(nuevaCat){ const n = nuevaCat.toLowerCase().trim(); setCategorias([...categorias, n]); setNuevaCat(''); } }} className="bg-sky-500 text-neutral-950 px-4 rounded-xl text-xs font-black">+</button>
+                </div>
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {categorias.map(cat => (
+                    <span key={cat} className="bg-neutral-900 text-neutral-400 text-[10px] font-bold px-2.5 py-1 rounded-md border border-neutral-700 flex items-center gap-1 capitalize">
+                      {cat}
+                      <X size={10} className="text-red-400 cursor-pointer" onClick={()=>{ if(window.confirm(`¿Borrar "${cat}"?`)) setCategorias(categorias.filter(c=>c!==cat)); }} />
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* 6. SECCIÓN ACORDEÓN: CARGA DE ARTÍCULOS */}
+          <div className="bg-neutral-800/60 rounded-2xl border border-neutral-700/30 overflow-hidden">
+            <button onClick={() => toggleSeccionAdmin('productos')} className="w-full p-4 flex justify-between items-center font-black text-xs uppercase tracking-wider text-emerald-400">
+              <span className="flex items-center gap-2"><ShoppingBag size={14}/> Gestión de Productos</span>
+              {seccionAdminAbierta === 'productos' ? <ChevronUp size={16}/> : <ChevronDown size={16}/>}
+            </button>
+            {seccionAdminAbierta === 'productos' && (
+              <div className="p-4 pt-3 space-y-4 border-t border-neutral-800/50">
+                <div className="flex justify-between items-center bg-neutral-950 p-2.5 rounded-xl border border-neutral-800 cursor-pointer" onClick={() => setMostrarFormularioProd(!mostrarFormularioProd)}>
+                  <span className="text-[11px] font-black text-yellow-400 uppercase">{editandoProductoId ? "✏️ Editando Producto" : "➕ Crear Nuevo Artículo"}</span>
+                  {mostrarFormularioProd ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                </div>
+
+                {mostrarFormularioProd && (
+                  <div className="bg-neutral-950/80 p-3 rounded-xl border border-neutral-800/60 space-y-2">
+                    <input type="text" placeholder="Nombre del plato/bebida" value={prodForm.nombre} onChange={e=>setProdForm({...prodForm, nombre: e.target.value})} className="w-full bg-neutral-800 border border-neutral-700 rounded-lg py-1.5 px-3 text-xs text-white" />
+                    <input type="text" placeholder="Detalle o descripción del contenido" value={prodForm.descripcion} onChange={e=>setProdForm({...prodForm, descripcion: e.target.value})} className="w-full bg-neutral-800 border border-neutral-700 rounded-lg py-1.5 px-3 text-xs text-white" />
+                    <input type="number" placeholder="Precio de Venta ($)" value={prodForm.precio || ''} onChange={e=>setProdForm({...prodForm, precio: Number(e.target.value)})} className="w-full bg-neutral-800 border border-neutral-700 rounded-lg py-1.5 px-3 text-xs text-white" />
+                    <select value={prodForm.categoria} onChange={e=>setProdForm({...prodForm, categoria: e.target.value})} className="w-full bg-neutral-800 border border-neutral-700 rounded-lg py-1.5 px-3 text-xs capitalize text-white">
+                      {categorias.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                    <input type="file" accept="image/*" onChange={e=>handleFileChange(e,'producto')} className="text-[10px]" />
+                    <button type="button" disabled={subiendoImagen || !prodForm.nombre || !prodForm.precio} onClick={() => {
+                      const imgF = prodForm.imagen.trim() !== "" ? prodForm.imagen : "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?q=80&w=500";
+                      let lN = editandoProductoId ? productos.map(p => p.id === editandoProductoId ? { ...prodForm, imagen: imgF, id: editandoProductoId } : p) : [...productos, { ...prodForm, imagen: imgF, id: 'prod_' + Date.now() }];
+                      setProductos(lN); localStorage.setItem('local_productos', JSON.stringify(lN));
+                      setEditandoProductoId(null); setProdForm({ nombre: '', descripcion: '', precio: 0, categoria: categoriaAdminActiva, imagen: '' }); setMostrarFormularioProd(false);
+                    }} className="w-full bg-gradient-to-r from-yellow-400 to-yellow-500 text-neutral-950 font-black py-2 rounded-lg text-xs uppercase">Guardar Artículo</button>
+                  </div>
+                )}
+
+                <div className="border-t border-neutral-800/80 pt-2">
+                  <div className="flex gap-1.5 overflow-x-auto pb-2 scrollbar-none">
+                    {categorias.map(cat => (
+                      <button key={cat} type="button" onClick={() => setCategoriaAdminActiva(cat)} className={`px-3 py-1.5 rounded-xl capitalize font-bold text-[11px] ${categoriaAdminActiva === cat ? 'bg-sky-500 text-neutral-950' : 'bg-neutral-900 text-neutral-400'}`}>{cat}</button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-2 max-h-[250px] overflow-y-auto pr-1">
+                  {productos.filter(p => p.categoria === categoriaAdminActiva).map(p => (
+                    <div key={p.id} className="flex items-center justify-between bg-neutral-900/60 p-2 rounded-xl border border-neutral-800 text-xs">
+                      <div className="flex items-center gap-2 truncate">
+                        <img src={p.imagen} className="w-10 h-10 rounded-lg object-cover flex-shrink-0" alt="" />
+                        <div className="truncate"><p className="font-bold text-white truncate">{p.nombre}</p><p className="text-[10px] text-yellow-500 font-black">${p.precio}</p></div>
+                      </div>
+                      <div className="flex gap-1.5 ml-2">
+                        <button onClick={()=>{ setEditandoProductoId(p.id); setProdForm(p); setMostrarFormularioProd(true); }} className="p-2 text-sky-400 bg-neutral-800 rounded-lg"><Edit2 size={12}/></button>
+                        <button onClick={()=>{ if(window.confirm(`¿Eliminar?`)){ const f = productos.filter(pr=>pr.id!==p.id); setProductos(f); localStorage.setItem('local_productos', JSON.stringify(f)); } }} className="p-2 text-red-400 bg-neutral-800 rounded-lg"><Trash2 size={12}/></button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -612,11 +654,8 @@ export default function HomeCliente() {
         </button>
       </div>
 
-      {/* ACCESO INTELIGENTE / CAMUFLADO AL PANEL */}
-      <button 
-        onClick={accederAlAdminSeguro}
-        className="absolute bottom-0 left-0 right-0 h-4 bg-transparent z-40 cursor-default focus:outline-none"
-      />
+      {/* ACCESO OCULTO AL PANEL DE CONTROL */}
+      <button onClick={accederAlAdminSeguro} className="absolute bottom-0 left-0 right-0 h-4 bg-transparent z-40 cursor-default focus:outline-none" />
 
     </div>
   );
