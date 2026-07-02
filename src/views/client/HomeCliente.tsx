@@ -37,6 +37,8 @@ interface ItemDelCarrito {
   cantidad: number;
 }
 
+type MetodoPago = 'efectivo' | 'transferencia';
+
 // === DATOS POR DEFECTO (PRIMER ARRANQUE) ===
 const infoLocalPorDefecto: InfoLocal = {
   nombre: "Lo de Fiore",
@@ -98,11 +100,23 @@ export default function HomeCliente() {
   const [carrito, setCarrito] = useState<ItemDelCarrito[]>([]);
   const [vistaActual, setVistaActual] = useState<'menu' | 'carrito' | 'admin'>('menu');
 
-  // Formulario del cliente
-  const [nombre, setNombre] = useState('');
-  const [telefono, setTelefono] = useState('');
-  const [direccion, setDireccion] = useState('');
-  const [entreCalles, setEntreCalles] = useState('');
+  // Formulario del cliente con Persistencia en LocalStorage
+  const [nombre, setNombre] = useState(() => localStorage.getItem('cliente_nombre') || '');
+  const [telefono, setTelefono] = useState(() => localStorage.getItem('cliente_telefono') || '');
+  const [direccion, setDireccion] = useState(() => localStorage.getItem('cliente_direccion') || '');
+  const [entreCalles, setEntreCalles] = useState(() => localStorage.getItem('cliente_entrecalles') || '');
+  const [gmapsLink, setGmapsLink] = useState(() => localStorage.getItem('cliente_gmaps') || '');
+
+  // Métodos de pago y vuelto
+  const [metodoPago, setMetodoPago] = useState<MetodoPago>('efectivo');
+  const [pagaCon, setPagaCon] = useState<string>('');
+
+  // Persistencia de los datos del cliente en tiempo real
+  useEffect(() => { localStorage.setItem('cliente_nombre', nombre); }, [nombre]);
+  useEffect(() => { localStorage.setItem('cliente_telefono', telefono); }, [telefono]);
+  useEffect(() => { localStorage.setItem('cliente_direccion', direccion); }, [direccion]);
+  useEffect(() => { localStorage.setItem('cliente_entrecalles', entreCalles); }, [entreCalles]);
+  useEffect(() => { localStorage.setItem('cliente_gmaps', gmapsLink); }, [gmapsLink]);
 
   // === ESTADOS INTERNOS DEL PANEL DE CONTROL ===
   const [editandoProductoId, setEditandoProductoId] = useState<string | null>(null);
@@ -111,18 +125,16 @@ export default function HomeCliente() {
   // Inputs temporales para agregar/editar producto
   const [prodForm, setProdForm] = useState({ nombre: '', descripcion: '', precio: 0, categoria: 'pizzas', imagen: '' });
 
-  // === PROCESADOR DE ARCHIVOS DIRECTO A CLOUDINARY (MODO UNSIGNED SEGURO CON VITE) ===
+  // === PROCESADOR DE ARCHIVOS DIRECTO A CLOUDINARY ===
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>, tipo: 'portada' | 'avatar' | 'producto') => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Obtener variables de entorno estilo Vite
-// @ts-ignore
-const cloudName = (import.meta as any).env.VITE_CLOUDINARY_CLOUD_NAME;
-// @ts-ignore
-const uploadPreset = (import.meta as any).env.VITE_CLOUDINARY_UPLOAD_PRESET;
+    // @ts-ignore
+    const cloudName = (import.meta as any).env.VITE_CLOUDINARY_CLOUD_NAME;
+    // @ts-ignore
+    const uploadPreset = (import.meta as any).env.VITE_CLOUDINARY_UPLOAD_PRESET;
 
-    // Validación de seguridad en consola
     if (!cloudName || !uploadPreset) {
       console.error("Faltan configurar las variables de entorno de Cloudinary (VITE_CLOUDINARY_CLOUD_NAME o VITE_CLOUDINARY_UPLOAD_PRESET)");
       alert("Error de configuración del sistema de imágenes. Verifique las variables de entorno.");
@@ -136,7 +148,6 @@ const uploadPreset = (import.meta as any).env.VITE_CLOUDINARY_UPLOAD_PRESET;
       formData.append('file', file);
       formData.append('upload_preset', uploadPreset);
 
-      // URL dinámica e inyección segura por Vite
       const respuesta = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
         method: 'POST',
         body: formData
@@ -180,24 +191,71 @@ const uploadPreset = (import.meta as any).env.VITE_CLOUDINARY_UPLOAD_PRESET;
     }).filter(item => item.cantidad > 0));
   };
 
+  const vaciarCarrito = () => {
+    if (window.confirm("¿Estás seguro de que querés vaciar por completo el carrito?")) {
+      setCarrito([]);
+    }
+  };
+
+  // API Nativa de Geolocalización para Google Maps
+  const obtenerGeolocalizacion = () => {
+    if (!navigator.geolocation) {
+      alert("Tu navegador o dispositivo no soporta geolocalización.");
+      return;
+    }
+
+    alert("Solicitando permisos de ubicación... Asegúrate de aceptarlos.");
+    
+    navigator.geolocation.getCurrentPosition(
+      (posicion) => {
+        const lat = posicion.coords.latitude;
+        const lon = posicion.coords.longitude;
+        const linkGoogleMaps = `https://www.google.com/maps?q=${lat},${lon}`;
+        setGmapsLink(linkGoogleMaps);
+        alert("📍 ¡Ubicación GPS guardada correctamente con éxito!");
+      },
+      (error) => {
+        console.error(error);
+        alert("No se pudo obtener la ubicación exacta. Asegúrate de tener el GPS activado y dar los permisos correspondientes.");
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
+
   // Enviar WhatsApp e impactar métricas en el Panel
   const enviarPedidoWhatsApp = (e: React.FormEvent) => {
     e.preventDefault();
     if (!nombre || !telefono || !direccion || !entreCalles) return;
 
+    const subtotal = carrito.reduce((acc, item) => acc + (item.precio * item.cantidad), 0);
+    const totalFinal = subtotal + infoLocal.costoEnvio;
+
     let mensaje = `⭐️ *NUEVO PEDIDO - ${infoLocal.nombre.toUpperCase()}* ⭐️\n\n`;
-    mensaje += `👤 *Cliente:* ${nombre}\n📞 *Teléfono:* ${telefono}\n📍 *Dirección:* ${direccion}\n🛣 *Entre Calles:* ${entreCalles}\n\n`;
-    mensaje += `🛒 *Detalle:*\n`;
+    mensaje += `👤 *Cliente:* ${nombre}\n📞 *Teléfono:* ${telefono}\n📍 *Dirección:* ${direccion}\n🛣 *Entre Calles:* ${entreCalles}\n`;
+    
+    if (gmapsLink) {
+      mensaje += `🗺️ *Ubicación GPS:* ${gmapsLink}\n`;
+    }
+    mensaje += `\n🛒 *Detalle:*\n`;
     
     carrito.forEach(item => { 
       mensaje += `• ${item.cantidad}x ${item.nombre} ($${(item.precio * item.cantidad).toLocaleString('es-AR')})\n`; 
     });
     
-    const subtotal = carrito.reduce((acc, item) => acc + (item.precio * item.cantidad), 0);
-    const totalFinal = subtotal + infoLocal.costoEnvio;
-
     mensaje += `\n💵 *Subtotal:* $${subtotal.toLocaleString('es-AR')}\n🛵 *Envío:* $${infoLocal.costoEnvio.toLocaleString('es-AR')}\n💰 *TOTAL:* $${totalFinal.toLocaleString('es-AR')}\n\n`;
-    mensaje += `💳 *Datos de Pago (Transferencia):*\n🏛 *CVU:* ${infoLocal.cbuCvu}\n🔑 *Alias:* ${infoLocal.alias}`;
+    
+    mensaje += `💳 *Método de Pago:* ${metodoPago === 'efectivo' ? 'Efectivo Cash 💵' : 'Transferencia Bancaria/Virtual 📱'}\n`;
+    
+    if (metodoPago === 'efectivo') {
+      const montoPagaCon = Number(pagaCon);
+      if (montoPagaCon && montoPagaCon > totalFinal) {
+        mensaje += `💸 *Paga con:* $${montoPagaCon.toLocaleString('es-AR')}\n🪙 *Vuelto para el repartidor:* $${(montoPagaCon - totalFinal).toLocaleString('es-AR')}\n`;
+      } else {
+        mensaje += `💸 *Paga con:* Importe exacto\n`;
+      }
+    } else {
+      mensaje += `🏛 *CVU:* ${infoLocal.cbuCvu}\n🔑 *Alias:* ${infoLocal.alias}\n_Por favor, envíe el comprobante por este chat._\n`;
+    }
 
     const nuevosPedidos = contadorPedidos + 1;
     const nuevaCaja = cajaAcumulada + totalFinal;
@@ -217,6 +275,10 @@ const uploadPreset = (import.meta as any).env.VITE_CLOUDINARY_UPLOAD_PRESET;
     localStorage.setItem('local_caja_acumulada', "0");
   };
 
+  // Calculo de cantidades del carrito para el botón flotante
+  const cantidadTotalProductos = carrito.reduce((acc, item) => acc + item.cantidad, 0);
+  const subtotalCarrito = carrito.reduce((acc, item) => acc + (item.precio * item.cantidad), 0);
+
   return (
     <div className="max-w-md mx-auto bg-neutral-900 min-h-screen pb-24 shadow-2xl relative font-sans text-white border-x border-neutral-800">
       
@@ -224,6 +286,27 @@ const uploadPreset = (import.meta as any).env.VITE_CLOUDINARY_UPLOAD_PRESET;
       {subiendoImagen && (
         <div className="fixed top-4 left-1/2 -translate-x-1/2 bg-sky-500 text-neutral-950 px-5 py-2.5 rounded-full font-black text-xs z-50 shadow-xl animate-bounce">
           ⏳ Guardando foto en la nube...
+        </div>
+      )}
+
+      {/* === BOTÓN FLOTANTE DINÁMICO DEL CARRITO === */}
+      {vistaActual === 'menu' && cantidadTotalProductos > 0 && (
+        <div className="fixed bottom-20 left-1/2 -translate-x-1/2 w-full max-w-sm px-4 z-40 animate-fade-in-up">
+          <button 
+            onClick={() => setVistaActual('carrito')}
+            className="w-full bg-gradient-to-r from-yellow-400 via-amber-500 to-yellow-500 text-neutral-950 font-black py-3 px-4 rounded-2xl flex items-center justify-between shadow-xl shadow-yellow-600/20 active:scale-95 transition-transform"
+          >
+            <div className="flex items-center gap-2">
+              <div className="bg-neutral-950 text-yellow-400 font-extrabold text-xs w-6 h-6 rounded-lg flex items-center justify-center">
+                {cantidadTotalProductos}
+              </div>
+              <span className="text-xs uppercase tracking-wider">Ver Mi Carrito</span>
+            </div>
+            <div className="flex items-center gap-1 font-black text-sm">
+              <span>${subtotalCarrito.toLocaleString('es-AR')}</span>
+              <ShoppingCart size={16} strokeWidth={2.5} />
+            </div>
+          </button>
         </div>
       )}
 
@@ -284,9 +367,24 @@ const uploadPreset = (import.meta as any).env.VITE_CLOUDINARY_UPLOAD_PRESET;
       {/* VISTA 2: CARRITO DE COMPRAS */}
       {vistaActual === 'carrito' && (
         <div className="p-4">
-          <h2 className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-sky-400 to-white mb-6">🛒 Tu Pedido</h2>
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-sky-400 to-white">🛒 Tu Pedido</h2>
+            {carrito.length > 0 && (
+              <button 
+                type="button" 
+                onClick={vaciarCarrito}
+                className="flex items-center gap-1.5 text-xs font-bold text-red-400 bg-red-500/10 border border-red-500/20 px-3 py-1.5 rounded-xl hover:bg-red-500/20 transition-colors"
+              >
+                <Trash2 size={13} /> Vaciar
+              </button>
+            )}
+          </div>
+
           {carrito.length === 0 ? (
-            <p className="text-center text-neutral-500 py-12">El carrito está totalmente vacío.</p>
+            <div className="text-center py-16 space-y-4">
+              <p className="text-neutral-500 text-sm">El carrito está totalmente vacío.</p>
+              <button onClick={() => setVistaActual('menu')} className="bg-neutral-800 text-sky-400 font-bold text-xs px-4 py-2 rounded-full border border-neutral-700/60">Volver al menú</button>
+            </div>
           ) : (
             <form onSubmit={enviarPedidoWhatsApp} className="space-y-5">
               <div className="bg-neutral-800/60 p-4 rounded-2xl space-y-4 border border-neutral-700/30">
@@ -303,17 +401,74 @@ const uploadPreset = (import.meta as any).env.VITE_CLOUDINARY_UPLOAD_PRESET;
               </div>
 
               <div className="bg-neutral-800/60 p-4 rounded-2xl space-y-3 border border-neutral-700/30">
-                <h3 className="text-xs font-black tracking-widest text-sky-400 uppercase">Datos de Entrega</h3>
+                <div className="flex justify-between items-center">
+                  <h3 className="text-xs font-black tracking-widest text-sky-400 uppercase">Datos de Entrega</h3>
+                  <button 
+                    type="button" 
+                    onClick={obtenerGeolocalizacion} 
+                    className="flex items-center gap-1 text-[11px] font-black bg-sky-500 text-neutral-950 px-2.5 py-1 rounded-lg shadow-md active:scale-95 transition-transform"
+                  >
+                    <Navigation size={11} fill="currentColor" /> {gmapsLink ? "📍 GPS Guardado" : "Fijar Mi Ubicación GPS"}
+                  </button>
+                </div>
                 <input type="text" placeholder="Nombre y Apellido" value={nombre} onChange={e=>setNombre(e.target.value)} className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-3 px-4 text-sm focus:outline-none focus:border-sky-400" required />
                 <input type="tel" placeholder="Teléfono" value={telefono} onChange={e=>setTelefono(e.target.value)} className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-3 px-4 text-sm focus:outline-none focus:border-sky-400" required />
                 <input type="text" placeholder="Dirección (Calle y Altura)" value={direccion} onChange={e=>setDireccion(e.target.value)} className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-3 px-4 text-sm focus:outline-none focus:border-sky-400" required />
                 <input type="text" placeholder="¿Entre qué calles?" value={entreCalles} onChange={e=>setEntreCalles(e.target.value)} className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-3 px-4 text-sm focus:outline-none focus:border-sky-400" required />
               </div>
 
+              {/* === SELECTOR DE MÉTODO DE PAGO Y VUELTO === */}
+              <div className="bg-neutral-800/60 p-4 rounded-2xl space-y-4 border border-neutral-700/30">
+                <h3 className="text-xs font-black tracking-widest text-sky-400 uppercase">Forma de Pago</h3>
+                <div className="grid grid-cols-2 gap-2">
+                  <button 
+                    type="button" 
+                    onClick={() => setMetodoPago('efectivo')}
+                    className={`py-3 px-4 rounded-xl border font-bold text-xs uppercase flex flex-col items-center gap-1.5 transition-all ${metodoPago === 'efectivo' ? 'bg-sky-950/40 border-sky-400 text-sky-400 shadow-md' : 'bg-neutral-900/60 border-neutral-700 text-neutral-400'}`}
+                  >
+                    <DollarSign size={16} /> Efectivo
+                  </button>
+                  <button 
+                    type="button" 
+                    onClick={() => setMetodoPago('transferencia')}
+                    className={`py-3 px-4 rounded-xl border font-bold text-xs uppercase flex flex-col items-center gap-1.5 transition-all ${metodoPago === 'transferencia' ? 'bg-sky-950/40 border-sky-400 text-sky-400 shadow-md' : 'bg-neutral-900/60 border-neutral-700 text-neutral-400'}`}
+                  >
+                    <CreditCard size={16} /> Transferencia
+                  </button>
+                </div>
+
+                {metodoPago === 'efectivo' ? (
+                  <div className="pt-1 animate-fade-in">
+                    <label className="text-[10px] text-neutral-400 font-bold block mb-1.5 uppercase">¿Con cuánto vas a pagar? (Para llevarte vuelto)</label>
+                    <div className="relative">
+                      <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-500 text-sm font-bold">$</span>
+                      <input 
+                        type="number" 
+                        placeholder="Ej: 20000 (Dejar vacío si es justo)" 
+                        value={pagaCon} 
+                        onChange={e=>setPagaCon(e.target.value)} 
+                        className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-2.5 pl-7 pr-4 text-sm focus:outline-none focus:border-sky-400"
+                      />
+                    </div>
+                    {Number(pagaCon) > (subtotalCarrito + infoLocal.costoEnvio) && (
+                      <p className="text-[11px] text-emerald-400 font-bold mt-2 px-1">
+                        🪙 Vuelto estimado: ${(Number(pagaCon) - (subtotalCarrito + infoLocal.costoEnvio)).toLocaleString('es-AR')}
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="bg-neutral-900/80 p-3 rounded-xl border border-neutral-800 text-xs space-y-1 text-neutral-300 animate-fade-in">
+                    <p className="font-bold text-yellow-500 mb-1">Datos de transferencia:</p>
+                    <p><span className="text-neutral-500">Alias:</span> {infoLocal.alias}</p>
+                    <p><span className="text-neutral-500">CVU:</span> {infoLocal.cbuCvu}</p>
+                  </div>
+                )}
+              </div>
+
               <div className="bg-neutral-800/60 p-4 rounded-2xl border border-neutral-700/30 text-sm space-y-1">
-                <div className="flex justify-between text-neutral-400"><span>Subtotal:</span><span>${carrito.reduce((a,c)=>a+(c.precio*c.cantidad),0).toLocaleString('es-AR')}</span></div>
+                <div className="flex justify-between text-neutral-400"><span>Subtotal:</span><span>${subtotalCarrito.toLocaleString('es-AR')}</span></div>
                 <div className="flex justify-between text-neutral-400"><span>Envío:</span><span>${infoLocal.costoEnvio.toLocaleString('es-AR')}</span></div>
-                <div className="flex justify-between font-black text-white text-base mt-2"><span>Total Final:</span><span className="text-yellow-500">${(carrito.reduce((a,c)=>a+(c.precio*c.cantidad),0)+infoLocal.costoEnvio).toLocaleString('es-AR')}</span></div>
+                <div className="flex justify-between font-black text-white text-base mt-2"><span>Total Final:</span><span className="text-yellow-500">${(subtotalCarrito + infoLocal.costoEnvio).toLocaleString('es-AR')}</span></div>
               </div>
 
               <button type="submit" disabled={subiendoImagen} className="w-full bg-emerald-500 text-neutral-950 font-black py-4 rounded-2xl flex items-center justify-center gap-2 text-base shadow-lg disabled:opacity-40"><MessageSquare size={18} fill="currentColor" />Enviar Pedido por WhatsApp</button>
@@ -450,7 +605,7 @@ const uploadPreset = (import.meta as any).env.VITE_CLOUDINARY_UPLOAD_PRESET;
         </button>
         <button onClick={() => setVistaActual('carrito')} className={`flex flex-col items-center relative transition-colors ${vistaActual === 'carrito' ? 'text-sky-400 font-bold' : 'text-neutral-500 font-medium'}`}>
           <ShoppingCart size={20} /><span className="text-[10px] mt-1">Carrito</span>
-          {carrito.reduce((a,c)=>a+c.cantidad,0) > 0 && <span className="absolute -top-1 right-2 bg-sky-500 text-neutral-950 text-[9px] font-black w-4 h-4 rounded-full flex items-center justify-center">{carrito.reduce((a,c)=>a+c.cantidad,0)}</span>}
+          {cantidadTotalProductos > 0 && <span className="absolute -top-1 right-2 bg-sky-500 text-neutral-950 text-[9px] font-black w-4 h-4 rounded-full flex items-center justify-center">{cantidadTotalProductos}</span>}
         </button>
       </div>
 
