@@ -177,4 +177,4 @@ export default function HomeCliente() {
     mensaje += `🛒 *Detalle:*\n`;
     carrito.forEach(item => { 
   mensaje += `• ${item.cantidad}x ${item.nombre} ($${(item.precio * item.cantidad).toLocaleString('es-AR')})\n`; 
-}); 
+});
