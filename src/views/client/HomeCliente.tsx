@@ -1,4 +1,8 @@
 // src/views/client/HomeCliente.tsx
+// Importa las funciones de firestore
+import { doc, setDoc, getDoc } from 'firebase/firestore'; 
+// Importa la base de datos (db) desde la raíz src
+import { db } from '../../firebase';
 import React, { useState, useEffect } from 'react';
 import { 
   ShoppingBag, ShoppingCart, MessageSquare, MapPin, Plus, Minus, 
@@ -102,6 +106,45 @@ export default function HomeCliente() {
   useEffect(() => { localStorage.setItem('local_info', JSON.stringify(infoLocal)); }, [infoLocal]);
   useEffect(() => { localStorage.setItem('local_productos', JSON.stringify(productos)); }, [productos]);
   useEffect(() => { localStorage.setItem('local_categorias', JSON.stringify(categorias)); }, [categorias]);
+
+  // === SINCRONIZACIÓN AUTOMÁTICA CON FIREBASE ===
+  useEffect(() => {
+    const syncToCloud = async () => {
+      try {
+        await setDoc(doc(db, "tienda", "configuracion"), {
+          infoLocal,
+          productos,
+          categorias,
+          updatedAt: new Date().toISOString()
+        });
+      } catch (e) {
+        console.error("Error al sincronizar con Firebase:", e);
+      }
+    };
+    
+    // Solo sincronizamos si ya tenemos datos cargados para evitar vaciar la BD
+    if (infoLocal.nombre) syncToCloud();
+  }, [infoLocal, productos, categorias]);
+
+  // === CARGA INICIAL DESDE FIREBASE (Al abrir la App) ===
+  useEffect(() => {
+    const cargarDesdeNube = async () => {
+      try {
+        const docRef = doc(db, "tienda", "configuracion");
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          // Actualizamos los estados si Firebase tiene datos más recientes
+          if (data.productos) setProductos(data.productos);
+          if (data.infoLocal) setInfoLocal(data.infoLocal);
+          if (data.categorias) setCategorias(data.categorias);
+        }
+      } catch (e) {
+        console.error("Error al cargar datos de Firebase:", e);
+      }
+    };
+    cargarDesdeNube();
+  }, []);
 
   // === ESTADOS DE NAVEGACIÓN, BUSCADOR Y CARRITO ===
   const [categoriaActiva, setCategoriaActiva] = useState(categorias[0] || 'pizzas');
