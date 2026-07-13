@@ -83,6 +83,7 @@ export default function AdminPanel({
   const [suscripcionActiva, setSuscripcionActiva] = useState<boolean | null>(null);
   const [suscripcionCargando, setSuscripcionCargando] = useState(true);
   const [errorSuscripcion, setErrorSuscripcion] = useState<string | null>(null);
+  const [guardando, setGuardando] = useState(false);
 
   useEffect(() => {
     let activo = true;
@@ -123,9 +124,23 @@ export default function AdminPanel({
     return p.categoria === categoriaAdminActiva;
   });
 
-  const guardarCatalogo = async (nuevosProductos: Producto[]) => {
-    await guardarProductosEnFirebase(nuevosProductos, infoLocal, categorias, suscripcionActiva ?? true);
-    setProductos(nuevosProductos);
+  const guardarCatalogo = async (nuevosProductos: Producto[]): Promise<boolean> => {
+    setGuardando(true);
+
+    try {
+      const ok = await guardarProductosEnFirebase(nuevosProductos, infoLocal, categorias, suscripcionActiva ?? true);
+      if (!ok) {
+        return false;
+      }
+
+      setProductos(nuevosProductos);
+      return true;
+    } catch (error) {
+      console.error('Error al guardar el catálogo en Firebase:', error);
+      return false;
+    } finally {
+      setGuardando(false);
+    }
   };
 
   const handleGuardarProducto = async () => {
@@ -146,7 +161,12 @@ export default function AdminPanel({
       ? productos.map((p) => (p.id === editandoProductoId ? productoBase : p))
       : [...productos, productoBase];
 
-    await guardarCatalogo(nuevosProductos);
+    const guardado = await guardarCatalogo(nuevosProductos);
+    if (!guardado) {
+      alert('No se pudo guardar el producto. Verifica la conexión y vuelve a intentarlo.');
+      return;
+    }
+
     setEditandoProductoId(null);
     setProdForm(crearProductoForm(categorias[0] ?? 'pizzas'));
     setMostrarFormularioProd(false);
@@ -160,7 +180,10 @@ export default function AdminPanel({
   const handleEliminarProducto = async (id: string) => {
     if (!window.confirm('¿Eliminar este producto?')) return;
     const nuevosProductos = productos.filter((p) => p.id !== id);
-    await guardarCatalogo(nuevosProductos);
+    const guardado = await guardarCatalogo(nuevosProductos);
+    if (!guardado) {
+      alert('No se pudo eliminar el producto. Intenta nuevamente.');
+    }
   };
 
   const handleAgregarCategoria = async () => {
@@ -173,7 +196,11 @@ export default function AdminPanel({
 
     const nuevasCategorias = [...categorias, nombre];
     setCategorias(nuevasCategorias);
-    await guardarProductosEnFirebase(productos, infoLocal, nuevasCategorias, suscripcionActiva ?? true);
+    const ok = await guardarProductosEnFirebase(productos, infoLocal, nuevasCategorias, suscripcionActiva ?? true);
+    if (!ok) {
+      alert('No se pudo guardar la nueva sección. Intenta nuevamente.');
+      return;
+    }
     setNuevaCat('');
   };
 
@@ -181,7 +208,11 @@ export default function AdminPanel({
     if (!window.confirm(`¿Borrar la sección "${categoria}"?`)) return;
     const nuevasCategorias = categorias.filter((c) => c !== categoria);
     setCategorias(nuevasCategorias);
-    await guardarProductosEnFirebase(productos, infoLocal, nuevasCategorias, suscripcionActiva ?? true);
+    const ok = await guardarProductosEnFirebase(productos, infoLocal, nuevasCategorias, suscripcionActiva ?? true);
+    if (!ok) {
+      alert('No se pudo eliminar la sección. Intenta nuevamente.');
+      return;
+    }
   };
 
   const handleInfoLocalChange = async (campo: keyof InfoLocal, valor: string | number) => {
@@ -341,7 +372,7 @@ export default function AdminPanel({
                   {categorias.map((c) => <option key={c} value={c}>{c}</option>)}
                 </select>
                 <input type="file" accept="image/*" onChange={(e) => void onFileChange(e, 'producto')} className="text-[10px]" disabled={suscripcionActiva === false} />
-                <button type="button" disabled={subiendoImagen || suscripcionActiva === false || !prodForm.nombre || !prodForm.precio} onClick={() => void handleGuardarProducto()} className="w-full bg-gradient-to-r from-yellow-400 to-yellow-500 text-neutral-950 font-black py-2 rounded-lg text-xs uppercase disabled:opacity-60">Guardar Artículo</button>
+                <button type="button" disabled={subiendoImagen || suscripcionActiva === false || guardando || !prodForm.nombre || !prodForm.precio} onClick={() => void handleGuardarProducto()} className="w-full bg-gradient-to-r from-yellow-400 to-yellow-500 text-neutral-950 font-black py-2 rounded-lg text-xs uppercase disabled:opacity-60">{guardando ? 'Guardando…' : 'Guardar Artículo'}</button>
               </div>
             )}
 

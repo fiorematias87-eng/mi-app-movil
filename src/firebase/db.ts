@@ -141,22 +141,20 @@ export const getShopConfigData = async (): Promise<ShopConfigData> => {
   return fallback;
 };
 
-export const saveShopConfigData = async (payload: { infoLocal: InfoLocal; categorias: string[]; productos?: Producto[] }) => {
+export const saveShopConfigData = async (payload: { infoLocal: InfoLocal; categorias: string[]; productos?: Producto[] }): Promise<boolean> => {
   const data: ShopConfigData = {
     infoLocal: payload.infoLocal,
     productos: payload.productos ?? leerDatosLocales().productos,
     categorias: payload.categorias,
   };
 
-  guardarDatosLocales(data);
-
   try {
     await setDoc(CONFIG_DOC, data, { merge: true });
+    return true;
   } catch (error) {
-    console.warn("No se pudo guardar en Firestore, se guardó localmente:", error);
+    console.error("No se pudo guardar en Firestore:", error);
+    throw error;
   }
-
-  return data;
 };
 
 export const guardarProductosEnFirebase = async (
@@ -164,12 +162,17 @@ export const guardarProductosEnFirebase = async (
   infoLocal: InfoLocal,
   categorias: string[],
   _suscripcionActiva?: boolean,
-) => {
-  return saveShopConfigData({
-    infoLocal,
-    productos: nuevosProductos,
-    categorias,
-  });
+): Promise<boolean> => {
+  try {
+    return await saveShopConfigData({
+      infoLocal,
+      productos: nuevosProductos,
+      categorias,
+    });
+  } catch (error) {
+    console.error("No se pudo guardar el catálogo:", error);
+    return false;
+  }
 };
 
 export const verificarSuscripcion = async (): Promise<boolean> => {
