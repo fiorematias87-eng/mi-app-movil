@@ -1,7 +1,7 @@
 // src/views/client/HomeCliente.tsx
 import React, { useState, useEffect } from 'react';
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'firebase/auth';
-import { auth } from '../../firebase/config';
+import { auth } from '../../firebase';
 import {
   getShopConfigData,
   saveShopConfigData,
