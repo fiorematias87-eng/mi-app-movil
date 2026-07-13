@@ -40,6 +40,24 @@ interface AdminPanelProps {
   onFileChange: (event: React.ChangeEvent<HTMLInputElement>, tipo: 'portada' | 'avatar' | 'producto') => Promise<void>;
 }
 
+type ProductoFormState = {
+  nombre: string;
+  descripcion: string;
+  precio: number;
+  categoria: string;
+  imagen: string;
+  activo: boolean;
+};
+
+const crearProductoForm = (categoriaInicial: string): ProductoFormState => ({
+  nombre: '',
+  descripcion: '',
+  precio: 0,
+  categoria: categoriaInicial,
+  imagen: '',
+  activo: true,
+});
+
 export default function AdminPanel({
   infoLocal,
   setInfoLocal,
@@ -59,15 +77,8 @@ export default function AdminPanel({
   const [editandoProductoId, setEditandoProductoId] = useState<string | null>(null);
   const [nuevaCat, setNuevaCat] = useState('');
   const [mostrarFormularioProd, setMostrarFormularioProd] = useState(false);
-  const [categoriaAdminActiva, setCategoriaAdminActiva] = useState(categorias[0] || 'pizzas');
-  const [prodForm, setProdForm] = useState({
-    nombre: '',
-    descripcion: '',
-    precio: 0,
-    categoria: categorias[0] || 'pizzas',
-    imagen: '',
-    activo: true,
-  });
+  const [categoriaAdminActiva, setCategoriaAdminActiva] = useState<string>(categorias[0] ?? 'pizzas');
+  const [prodForm, setProdForm] = useState<ProductoFormState>(crearProductoForm(categorias[0] ?? 'pizzas'));
   const [busquedaAdmin, setBusquedaAdmin] = useState('');
   const [suscripcionActiva, setSuscripcionActiva] = useState<boolean | null>(null);
   const [suscripcionCargando, setSuscripcionCargando] = useState(true);
@@ -94,16 +105,21 @@ export default function AdminPanel({
       }
     };
 
-    chequearSuscripcion();
+    void chequearSuscripcion();
     return () => {
       activo = false;
     };
   }, []);
 
-  const productosFiltradosAdmin = productos.filter((p) => {
-    const coincideBusqueda = p.nombre.toLowerCase().includes(busquedaAdmin.toLowerCase()) ||
-      p.descripcion.toLowerCase().includes(busquedaAdmin.toLowerCase());
-    if (busquedaAdmin.trim() !== '') return coincideBusqueda;
+  const textoBusqueda = busquedaAdmin.trim().toLowerCase();
+
+  const productosFiltradosAdmin = (productos ?? []).filter((p) => {
+    const nombre = (p.nombre ?? '').toLowerCase();
+    const descripcion = (p.descripcion ?? '').toLowerCase();
+
+    if (textoBusqueda !== '') {
+      return nombre.includes(textoBusqueda) || descripcion.includes(textoBusqueda);
+    }
     return p.categoria === categoriaAdminActiva;
   });
 
@@ -132,7 +148,7 @@ export default function AdminPanel({
 
     await guardarCatalogo(nuevosProductos);
     setEditandoProductoId(null);
-    setProdForm({ nombre: '', descripcion: '', precio: 0, categoria: categorias[0] || 'pizzas', imagen: '', activo: true });
+    setProdForm(crearProductoForm(categorias[0] ?? 'pizzas'));
     setMostrarFormularioProd(false);
   };
 

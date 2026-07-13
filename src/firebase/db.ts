@@ -1,18 +1,18 @@
-import { doc, getDoc, onSnapshot, setDoc } from 'firebase/firestore';
-import { db } from './config';
+import { db } from "./config";
+import { doc, getDoc, onSnapshot, setDoc } from "firebase/firestore";
 
 export interface InfoLocal {
   nombre: string;
   descripcion: string;
-  telefonoWhatsApp: string;
   direccion: string;
+  telefonoWhatsApp: string;
   costoEnvio: number;
   portadaUrl: string;
   avatarUrl: string;
-  facebook: string;
-  instagram: string;
   cbuCvu: string;
   alias: string;
+  instagram?: string;
+  facebook?: string;
 }
 
 export interface Producto {
@@ -25,187 +25,180 @@ export interface Producto {
   activo?: boolean;
 }
 
-export interface TiendaConfigData {
+interface ShopConfigData {
   infoLocal: InfoLocal;
   productos: Producto[];
   categorias: string[];
-  updatedAt?: string;
 }
 
+const STORAGE_KEY = "mi_app_movil_shop_data";
+const CONFIG_DOC = doc(db, "shop", "config");
+
 export const infoLocalPorDefecto: InfoLocal = {
-  nombre: 'Lo de Fiore',
-  descripcion: 'Las mejores pizzas y empanadas a la piedra 🍕🔥 ¡Horno de barro!',
-  telefonoWhatsApp: '5491165099266',
-  direccion: 'Av. Principal 1234, Buenos Aires',
-  costoEnvio: 1500,
-  portadaUrl: 'https://images.unsplash.com/photo-1513104890138-7c749659a591?q=80&w=1000',
-  avatarUrl: 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?q=80&w=150',
-  facebook: '@lodefiore',
-  instagram: '@lodefiore.ok',
-  cbuCvu: '0000003100000000000000',
-  alias: 'fiore.pizza.mp',
+  nombre: "Mi Local",
+  descripcion: "Delicias caseras y atención rápida",
+  direccion: "Av. Siempre Viva 742",
+  telefonoWhatsApp: "5491112345678",
+  costoEnvio: 500,
+  portadaUrl: "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=1000&q=80",
+  avatarUrl: "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=400&q=80",
+  cbuCvu: "0000003100000000000000",
+  alias: "mi.local",
+  instagram: "",
+  facebook: "",
 };
 
 export const productosPorDefecto: Producto[] = [
   {
-    id: 'p1',
-    nombre: 'Pizza Muzzarella',
-    descripcion: 'Salsa de tomate artesanal, abundante muzzarella, aceitunas verdes.',
-    precio: 8500,
-    categoria: 'pizzas',
-    imagen: 'https://images.unsplash.com/photo-1604382354936-07c5d9983bd3?q=80&w=500',
+    id: "prod_1",
+    nombre: "Pizza Especial",
+    descripcion: "Salsa de tomate, muzzarella y jamón",
+    precio: 1800,
+    categoria: "pizzas",
+    imagen: "https://images.unsplash.com/photo-1513104890138-7c749659a591?auto=format&fit=crop&w=500&q=80",
     activo: true,
   },
   {
-    id: 'p2',
-    nombre: 'Pizza Fugazzeta',
-    descripcion: 'Mucha cebolla, muzzarella de primera calidad, olivas negras.',
-    precio: 9500,
-    categoria: 'pizzas',
-    imagen: 'https://images.unsplash.com/photo-1513104890138-7c749659a591?q=80&w=500',
+    id: "prod_2",
+    nombre: "Limonada",
+    descripcion: "Refrescante y natural",
+    precio: 700,
+    categoria: "bebidas",
+    imagen: "https://images.unsplash.com/photo-1621506289937-a8e4df240d0b?auto=format&fit=crop&w=500&q=80",
     activo: true,
   },
 ];
 
-export const categoriesPorDefecto = ['pizzas', 'empanadas', 'bebidas', 'promos'];
+export const categoriesPorDefecto: string[] = ["pizzas", "bebidas", "postres"];
 
-const normalizeProducto = (producto: Partial<Producto> & { id?: string }): Producto => ({
-  id: producto.id ?? `prod-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-  nombre: producto.nombre ?? '',
-  descripcion: producto.descripcion ?? '',
-  precio: Number(producto.precio ?? 0),
-  categoria: producto.categoria ?? 'general',
-  imagen: producto.imagen ?? '',
-  activo: producto.activo ?? true,
-});
-
-export const getShopConfigData = async (): Promise<TiendaConfigData> => {
-  const docRef = doc(db, 'tienda', 'configuracion');
-  const snapshot = await getDoc(docRef);
-
-  if (!snapshot.exists()) {
+const leerDatosLocales = (): ShopConfigData => {
+  if (typeof window === "undefined") {
     return {
       infoLocal: infoLocalPorDefecto,
       productos: productosPorDefecto,
       categorias: categoriesPorDefecto,
-      updatedAt: new Date().toISOString(),
     };
   }
 
-  const data = snapshot.data() as Partial<TiendaConfigData>;
-  const productos = Array.isArray(data.productos)
-    ? data.productos.map(normalizeProducto)
-    : productosPorDefecto;
-
-  return {
-    infoLocal: {
-      ...infoLocalPorDefecto,
-      ...(data.infoLocal ?? {}),
-    },
-    productos,
-    categorias: Array.isArray(data.categorias) && data.categorias.length > 0 ? data.categorias : categoriesPorDefecto,
-    updatedAt: data.updatedAt as string | undefined,
-  };
-};
-
-export const saveShopConfigData = async (payload: Partial<TiendaConfigData>) => {
-  const docRef = doc(db, 'tienda', 'configuracion');
-  const data: Partial<TiendaConfigData> = {
-    ...(payload.infoLocal ? { infoLocal: payload.infoLocal } : {}),
-    ...(payload.productos ? { productos: payload.productos.map(normalizeProducto) } : {}),
-    ...(payload.categorias ? { categorias: payload.categorias } : {}),
-    updatedAt: new Date().toISOString(),
-  };
-
-  await setDoc(docRef, data, { merge: true });
-};
-
-export const updateProductInStore = async (producto: Producto) => {
-  const actual = await getShopConfigData();
-  const productosActualizados = actual.productos.some((item) => item.id === producto.id)
-    ? actual.productos.map((item) => (item.id === producto.id ? normalizeProducto(producto) : item))
-    : [...actual.productos, normalizeProducto(producto)];
-
-  await saveShopConfigData({ productos: productosActualizados });
-  return productosActualizados;
-};
-
-export const deleteProductFromStore = async (productoId: string) => {
-  const actual = await getShopConfigData();
-  const productosActualizados = actual.productos.filter((item) => item.id !== productoId);
-  await saveShopConfigData({ productos: productosActualizados });
-  return productosActualizados;
-};
-
-export const updateShopConfigInStore = async (infoLocal: InfoLocal) => {
-  await saveShopConfigData({ infoLocal });
-};
-
-export const updateCategoriesInStore = async (categorias: string[]) => {
-  await saveShopConfigData({ categorias });
-};
-
-export const suscribirProductos = (
-  onData: (data: TiendaConfigData) => void,
-) => {
-  const docRef = doc(db, 'tienda', 'configuracion');
-
-  return onSnapshot(docRef, (snapshot) => {
-    if (!snapshot.exists()) {
-      onData({
+  try {
+    const guardado = window.localStorage.getItem(STORAGE_KEY);
+    if (!guardado) {
+      return {
         infoLocal: infoLocalPorDefecto,
         productos: productosPorDefecto,
         categorias: categoriesPorDefecto,
-        updatedAt: new Date().toISOString(),
-      });
-      return;
+      };
     }
 
-    const data = snapshot.data() as Partial<TiendaConfigData>;
-    const productos = Array.isArray(data.productos)
-      ? data.productos.map(normalizeProducto)
-      : productosPorDefecto;
+    const parsed = JSON.parse(guardado) as Partial<ShopConfigData>;
+    return {
+      infoLocal: { ...infoLocalPorDefecto, ...(parsed.infoLocal ?? {}) },
+      productos: Array.isArray(parsed.productos) ? parsed.productos : productosPorDefecto,
+      categorias: Array.isArray(parsed.categorias) ? parsed.categorias : categoriesPorDefecto,
+    };
+  } catch {
+    return {
+      infoLocal: infoLocalPorDefecto,
+      productos: productosPorDefecto,
+      categorias: categoriesPorDefecto,
+    };
+  }
+};
 
-    onData({
-      infoLocal: {
-        ...infoLocalPorDefecto,
-        ...(data.infoLocal ?? {}),
-      },
-      productos,
-      categorias: Array.isArray(data.categorias) && data.categorias.length > 0 ? data.categorias : categoriesPorDefecto,
-      updatedAt: data.updatedAt as string | undefined,
-    });
-  });
+const guardarDatosLocales = (data: ShopConfigData) => {
+  if (typeof window !== "undefined") {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  }
+};
+
+const normalizarDatos = (data: Partial<ShopConfigData> | null | undefined): ShopConfigData => {
+  const fallback = leerDatosLocales();
+  return {
+    infoLocal: { ...fallback.infoLocal, ...(data?.infoLocal ?? {}) },
+    productos: Array.isArray(data?.productos) ? data.productos : fallback.productos,
+    categorias: Array.isArray(data?.categorias) ? data.categorias : fallback.categorias,
+  };
+};
+
+export const getShopConfigData = async (): Promise<ShopConfigData> => {
+  const fallback = leerDatosLocales();
+
+  if (typeof window === "undefined") {
+    return fallback;
+  }
+
+  try {
+    const snapshot = await getDoc(CONFIG_DOC);
+    if (snapshot.exists()) {
+      const data = normalizarDatos(snapshot.data() as Partial<ShopConfigData> | undefined);
+      guardarDatosLocales(data);
+      return data;
+    }
+  } catch (error) {
+    console.warn("No se pudo leer Firestore, usando almacenamiento local:", error);
+  }
+
+  return fallback;
+};
+
+export const saveShopConfigData = async (payload: { infoLocal: InfoLocal; categorias: string[]; productos?: Producto[] }) => {
+  const data: ShopConfigData = {
+    infoLocal: payload.infoLocal,
+    productos: payload.productos ?? leerDatosLocales().productos,
+    categorias: payload.categorias,
+  };
+
+  guardarDatosLocales(data);
+
+  try {
+    await setDoc(CONFIG_DOC, data, { merge: true });
+  } catch (error) {
+    console.warn("No se pudo guardar en Firestore, se guardó localmente:", error);
+  }
+
+  return data;
 };
 
 export const guardarProductosEnFirebase = async (
-  productos: Producto[],
+  nuevosProductos: Producto[],
   infoLocal: InfoLocal,
   categorias: string[],
-  suscripcionActiva: boolean,
+  _suscripcionActiva?: boolean,
 ) => {
-  const payload: Partial<TiendaConfigData> = {
+  return saveShopConfigData({
     infoLocal,
-    productos: productos.map(normalizeProducto),
+    productos: nuevosProductos,
     categorias,
-    updatedAt: new Date().toISOString(),
-  };
-
-  await saveShopConfigData(payload);
-
-  return {
-    suscripcionActiva,
-    actualizado: true,
-  };
+  });
 };
 
-export const verificarSuscripcion = async () => {
+export const verificarSuscripcion = async (): Promise<boolean> => {
+  return true;
+};
+
+export const suscribirProductos = (callback: (data: ShopConfigData) => void) => {
+  if (typeof window === "undefined") {
+    callback(leerDatosLocales());
+    return () => undefined;
+  }
+
+  const emitir = () => {
+    const data = leerDatosLocales();
+    callback(data);
+  };
+
+  emitir();
+
   try {
-    const docRef = doc(db, 'tienda', 'configuracion');
-    const snapshot = await getDoc(docRef);
-    return snapshot.exists();
+    return onSnapshot(CONFIG_DOC, (snapshot) => {
+      if (snapshot.exists()) {
+        const data = normalizarDatos(snapshot.data() as Partial<ShopConfigData> | undefined);
+        guardarDatosLocales(data);
+        callback(data);
+      }
+    });
   } catch (error) {
-    console.error('Error al verificar suscripción:', error);
-    return false;
+    console.warn("No se pudo suscribir a Firestore, usando almacenamiento local:", error);
+    return () => undefined;
   }
 };
