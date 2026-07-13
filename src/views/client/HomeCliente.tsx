@@ -1,41 +1,24 @@
 // src/views/client/HomeCliente.tsx
-// Importa las funciones de firestore
-import { doc, setDoc, getDoc } from 'firebase/firestore'; 
-// Importa la base de datos (db) desde la raíz src
-import { db } from '../../firebase';
 import React, { useState, useEffect } from 'react';
-import { 
-  ShoppingBag, ShoppingCart, MessageSquare, MapPin, Plus, Minus, 
-  Trash2, Star, User, Phone, Navigation, Settings, X, Edit2, 
-  Save, DollarSign, Clock, Calendar, Image, Link, CreditCard, Layers, 
-  ChevronDown, ChevronUp, Search, LogOut, Camera, ExternalLink, Eye, EyeOff
+import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'firebase/auth';
+import { auth } from '../../firebase/config';
+import {
+  getShopConfigData,
+  saveShopConfigData,
+  suscribirProductos,
+  infoLocalPorDefecto,
+  productosPorDefecto,
+  categoriesPorDefecto,
+  type InfoLocal,
+  type Producto,
+} from '../../firebase/db';
+import {
+  ShoppingBag, ShoppingCart, MessageSquare, MapPin, Plus, Minus,
+  Trash2, Star, X, ExternalLink, Search,
 } from 'lucide-react';
+import AdminPanel from '../../components/AdminPanel';
 
 // === ESTRUCTURAS DE DATOS VALIDADAS ===
-interface InfoLocal {
-  nombre: string;
-  descripcion: string;
-  telefonoWhatsApp: string;
-  direccion: string;
-  costoEnvio: number;
-  portadaUrl: string;
-  avatarUrl: string;
-  facebook: string;
-  instagram: string;
-  cbuCvu: string;
-  alias: string;
-}
-
-interface Producto {
-  id: string;
-  nombre: string;
-  descripcion: string;
-  precio: number;
-  categoria: string;
-  imagen: string;
-  activo?: boolean;
-}
-
 interface ItemDelCarrito {
   id: string;
   nombre: string;
@@ -45,109 +28,74 @@ interface ItemDelCarrito {
 
 type MetodoPago = 'efectivo' | 'transferencia';
 
-// === DATOS POR DEFECTO ===
-const infoLocalPorDefecto: InfoLocal = {
-  nombre: "Lo de Fiore",
-  descripcion: "Las mejores pizzas y empanadas a la piedra 🍕🔥 ¡Horno de barro!",
-  telefonoWhatsApp: "5491165099266", 
-  direccion: "Av. Principal 1234, Buenos Aires",
-  costoEnvio: 1500,
-  portadaUrl: "https://images.unsplash.com/photo-1513104890138-7c749659a591?q=80&w=1000",
-  avatarUrl: "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?q=80&w=150",
-  facebook: "@lodefiore",
-  instagram: "@lodefiore.ok",
-  cbuCvu: "0000003100000000000000",
-  alias: "fiore.pizza.mp"
-};
-
-const productosPorDefecto: Producto[] = [
-  { id: "p1", nombre: "Pizza Muzzarella", descripcion: "Salsa de tomate artesanal, abundante muzzarella, aceitunas verdes.", precio: 8500, categoria: "pizzas", imagen: "https://images.unsplash.com/photo-1604382354936-07c5d9983bd3?q=80&w=500", activo: true },
-  { id: "p2", nombre: "Pizza Fugazzeta", descripcion: "Mucha cebolla, muzzarella de primera calidad, olivas negras.", precio: 9500, categoria: "pizzas", imagen: "https://images.unsplash.com/photo-1513104890138-7c749659a591?q=80&w=500", activo: true }
-];
-
-const categoriesPorDefecto = ["pizzas", "empanadas", "bebidas", "promos"];
-
 export default function HomeCliente() {
-  // === ESTADOS CON PERSISTENCIA LOCAL STORAGE ===
-  const [infoLocal, setInfoLocal] = useState<InfoLocal>(() => {
-    const guardado = localStorage.getItem('local_info');
-    return guardado ? JSON.parse(guardado) : infoLocalPorDefecto;
-  });
-
-  const [productos, setProductos] = useState<Producto[]>(() => {
-    const guardado = localStorage.getItem('local_productos');
-    if (guardado) {
-      const prods = JSON.parse(guardado);
-      return prods.map((p: Producto) => p.activo !== undefined ? p : { ...p, activo: true });
-    }
-    return productosPorDefecto;
-  });
-
-  const [categorias, setCategorias] = useState<string[]>(() => {
-    const guardado = localStorage.getItem('local_categorias');
-    return guardado ? JSON.parse(guardado) : categoriesPorDefecto;
-  });
-
-  const [contadorPedidos, setContadorPedidos] = useState<number>(() => {
-    return Number(localStorage.getItem('local_pedidos_count') || "0");
-  });
-
-  const [cajaAcumulada, setCajaAcumulada] = useState<number>(() => {
-    return Number(localStorage.getItem('local_caja_acumulada') || "0");
-  });
-
-  const [isAdminAutenticado, setIsAdminAutenticado] = useState<boolean>(() => {
-    return localStorage.getItem('admin_sesion_activa') === 'true';
-  });
-
+  const [infoLocal, setInfoLocal] = useState<InfoLocal>(infoLocalPorDefecto);
+  const [productos, setProductos] = useState<Producto[]>(productosPorDefecto);
+  const [categorias, setCategorias] = useState<string[]>(categoriesPorDefecto);
+  const [contadorPedidos, setContadorPedidos] = useState<number>(() => Number(localStorage.getItem('local_pedidos_count') || '0'));
+  const [cajaAcumulada, setCajaAcumulada] = useState<number>(() => Number(localStorage.getItem('local_caja_acumulada') || '0'));
+  const [isAdminAutenticado, setIsAdminAutenticado] = useState(false);
   const [subiendoImagen, setSubiendoImagen] = useState(false);
   const [animarCarrito, setAnimarCarrito] = useState(false);
+  const [loadingDatos, setLoadingDatos] = useState(true);
+  const [errorDatos, setErrorDatos] = useState<string | null>(null);
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [adminEmail, setAdminEmail] = useState('');
+  const [adminPassword, setAdminPassword] = useState('');
 
-  useEffect(() => { localStorage.setItem('local_info', JSON.stringify(infoLocal)); }, [infoLocal]);
-  useEffect(() => { localStorage.setItem('local_productos', JSON.stringify(productos)); }, [productos]);
-  useEffect(() => { localStorage.setItem('local_categorias', JSON.stringify(categorias)); }, [categorias]);
-
-  // === SINCRONIZACIÓN AUTOMÁTICA CON FIREBASE ===
   useEffect(() => {
-    const syncToCloud = async () => {
-      try {
-        await setDoc(doc(db, "tienda", "configuracion"), {
-          infoLocal,
-          productos,
-          categorias,
-          updatedAt: new Date().toISOString()
-        });
-      } catch (e) {
-        console.error("Error al sincronizar con Firebase:", e);
-      }
-    };
-    
-    // Solo sincronizamos si ya tenemos datos cargados para evitar vaciar la BD
-    if (infoLocal.nombre) syncToCloud();
-  }, [infoLocal, productos, categorias]);
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setIsAdminAutenticado(Boolean(user));
+    });
 
-  // === CARGA INICIAL DESDE FIREBASE (Al abrir la App) ===
+    return unsubscribe;
+  }, []);
+
   useEffect(() => {
+    let activo = true;
+
     const cargarDesdeNube = async () => {
       try {
-        const docRef = doc(db, "tienda", "configuracion");
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          // Actualizamos los estados si Firebase tiene datos más recientes
-          if (data.productos) setProductos(data.productos);
-          if (data.infoLocal) setInfoLocal(data.infoLocal);
-          if (data.categorias) setCategorias(data.categorias);
+        setLoadingDatos(true);
+        setErrorDatos(null);
+        const data = await getShopConfigData();
+
+        if (!activo) return;
+
+        setInfoLocal(data.infoLocal);
+        setProductos(data.productos.map((producto) => ({ ...producto, activo: producto.activo !== false })));
+        setCategorias(data.categorias);
+      } catch (error) {
+        console.error('Error al cargar datos de Firebase:', error);
+        if (activo) {
+          setErrorDatos('No se pudieron cargar los datos desde Firebase. Se usaron los valores por defecto.');
+          setInfoLocal(infoLocalPorDefecto);
+          setProductos(productosPorDefecto);
+          setCategorias(categoriesPorDefecto);
         }
-      } catch (e) {
-        console.error("Error al cargar datos de Firebase:", e);
+      } finally {
+        if (activo) setLoadingDatos(false);
       }
     };
+
     cargarDesdeNube();
+
+    const unsubscribe = suscribirProductos((data) => {
+      if (!activo) return;
+      setProductos(data.productos.map((producto) => ({ ...producto, activo: producto.activo !== false })));
+      setInfoLocal(data.infoLocal);
+      setCategorias(data.categorias);
+      setLoadingDatos(false);
+    });
+
+    return () => {
+      activo = false;
+      unsubscribe();
+    };
   }, []);
 
   // === ESTADOS DE NAVEGACIÓN, BUSCADOR Y CARRITO ===
-  const [categoriaActiva, setCategoriaActiva] = useState(categorias[0] || 'pizzas');
   const [carrito, setCarrito] = useState<ItemDelCarrito[]>([]);
   const [vistaActual, setVistaActual] = useState<'menu' | 'carrito' | 'admin'>('menu');
   const [busqueda, setBusqueda] = useState('');
@@ -170,24 +118,7 @@ export default function HomeCliente() {
   useEffect(() => { localStorage.setItem('cliente_gmaps', gmapsLink); }, [gmapsLink]);
 
   // === ESTADOS PARA ACORDEONES DEL ADMIN ===
-  const [seccionAdminAbierta, setSeccionAdminAbierta] = useState<string | null>('productos');
-
-  // === ESTADOS INTERNOS DEL PANEL ===
-  const [editandoProductoId, setEditandoProductoId] = useState<string | null>(null);
-  const [nuevaCat, setNuevaCat] = useState('');
-  const [mostrarFormularioProd, setMostrarFormularioProd] = useState(false);
-  const [categoriaAdminActiva, setCategoriaAdminActiva] = useState(categorias[0] || 'pizzas');
-  const [prodForm, setProdForm] = useState({ nombre: '', descripcion: '', precio: 0, categoria: categorias[0] || 'pizzas', imagen: '', activo: true });
-
-  useEffect(() => {
-    if (categorias.length > 0 && !categorias.includes(prodForm.categoria)) {
-      setProdForm(p => ({ ...p, categoria: categorias[0] }));
-    }
-    if (categorias.length > 0 && !categorias.includes(categoriaAdminActiva)) {
-      setCategoriaAdminActiva(categorias[0]);
-    }
-  }, [categorias]);
-
+  const [categoriaActiva, setCategoriaActiva] = useState(categorias[0] || 'pizzas');
   // === REPRODUCCIÓN DE AUDIO ASINCRÓNICO EVITANDO FILTROS ===
   const reproducirSonidoExito = () => {
     const audio = new Audio("https://assets.mixkit.co/active_storage/sfx/2568/2568-84.wav");
@@ -200,16 +131,14 @@ export default function HomeCliente() {
   // === MANEJADOR CLOUDINARY ===
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>, tipo: 'portada' | 'avatar' | 'producto') => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (!file) return undefined;
 
-    // @ts-ignore
-    const cloudName = (import.meta as any).env.VITE_CLOUDINARY_CLOUD_NAME;
-    // @ts-ignore
-    const uploadPreset = (import.meta as any).env.VITE_CLOUDINARY_UPLOAD_PRESET;
+    const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
+    const uploadPreset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
 
     if (!cloudName || !uploadPreset) {
-      alert("Error de configuración de Cloudinary en las variables de entorno.");
-      return;
+      alert('Error de configuración de Cloudinary en las variables de entorno.');
+      return undefined;
     }
 
     try {
@@ -220,19 +149,26 @@ export default function HomeCliente() {
 
       const respuesta = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
         method: 'POST',
-        body: formData
+        body: formData,
       });
 
       if (!respuesta.ok) throw new Error('Error de subida');
       const datosImagen = await respuesta.json();
-      const urlNube = datosImagen.secure_url; 
+      const urlNube = datosImagen.secure_url;
 
-      if (tipo === 'portada') setInfoLocal(p => ({ ...p, portadaUrl: urlNube }));
-      if (tipo === 'avatar') setInfoLocal(p => ({ ...p, avatarUrl: urlNube }));
-      if (tipo === 'producto') setProdForm(p => ({ ...p, imagen: urlNube }));
+      if (tipo === 'portada') {
+        setInfoLocal((p) => ({ ...p, portadaUrl: urlNube }));
+      }
+
+      if (tipo === 'avatar') {
+        setInfoLocal((p) => ({ ...p, avatarUrl: urlNube }));
+      }
+
+      return urlNube;
     } catch (error) {
       console.error(error);
       alert('Error al subir la imagen.');
+      return undefined;
     } finally {
       setSubiendoImagen(false);
     }
@@ -263,12 +199,6 @@ export default function HomeCliente() {
 
   const vaciarCarrito = () => {
     if (window.confirm("¿Vaciar carrito?")) setCarrito([]);
-  };
-
-  const toggleActivoProducto = (id: string) => {
-    const listadoActualizado = productos.map(p => p.id === id ? { ...p, activo: p.activo === false ? true : false } : p);
-    setProductos(listadoActualizado);
-    localStorage.setItem('local_productos', JSON.stringify(listadoActualizado));
   };
 
   const abrirGoogleMapsExterno = () => {
@@ -317,31 +247,42 @@ export default function HomeCliente() {
     localStorage.setItem('local_pedidos_count', "0"); localStorage.setItem('local_caja_acumulada', "0");
   };
 
+  const iniciarSesionAdmin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthLoading(true);
+    setAuthError(null);
+
+    try {
+      await signInWithEmailAndPassword(auth, adminEmail.trim(), adminPassword);
+      setAdminEmail('');
+      setAdminPassword('');
+      setVistaActual('admin');
+    } catch (error: unknown) {
+      const mensaje = error instanceof Error ? error.message : 'No se pudo iniciar sesión.';
+      setAuthError(mensaje);
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
   const accederAlAdminSeguro = () => {
     if (isAdminAutenticado) {
       setVistaActual('admin');
     } else {
-      const password = prompt("Ingresá la contraseña del administrador:");
-      if (password === "applodefiore") {
-        setIsAdminAutenticado(true);
-        localStorage.setItem('admin_sesion_activa', 'true');
-        setVistaActual('admin');
-      } else if (password !== null) {
-        alert("Contraseña incorrecta.");
-      }
+      setVistaActual('admin');
+      setAuthError(null);
     }
   };
 
-  const cerrarSesionAdmin = () => {
-    if (window.confirm("¿Querés cerrar sesión en este dispositivo?")) {
-      setIsAdminAutenticado(false);
-      localStorage.removeItem('admin_sesion_activa');
+  const cerrarSesionAdmin = async () => {
+    if (window.confirm('¿Querés cerrar sesión en este dispositivo?')) {
+      try {
+        await signOut(auth);
+      } catch (error) {
+        console.error('Error al cerrar sesión:', error);
+      }
       setVistaActual('menu');
     }
-  };
-
-  const toggleSeccionAdmin = (seccion: string) => {
-    setSeccionAdminAbierta(seccionAdminAbierta === seccion ? null : seccion);
   };
 
   const cantidadTotalProductos = carrito.reduce((acc, item) => acc + item.cantidad, 0);
@@ -355,17 +296,22 @@ export default function HomeCliente() {
     return busqueda.trim() !== "" ? (estaActivo && coincideBusqueda) : (estaActivo && coincideCategoria && coincideBusqueda);
   });
 
-  const productosFiltradosAdmin = productos.filter(p => {
-    const coincideBusqueda = p.nombre.toLowerCase().includes(busquedaAdmin.toLowerCase()) || 
-                             p.descripcion.toLowerCase().includes(busquedaAdmin.toLowerCase());
-    if (busquedaAdmin.trim() !== "") {
-      return coincideBusqueda;
-    }
-    return p.categoria === categoriaAdminActiva;
-  });
-
   return (
     <div className="max-w-md mx-auto bg-neutral-900 min-h-screen pb-24 shadow-2xl relative font-sans text-white border-x border-neutral-800">
+      {loadingDatos && (
+        <div className="fixed inset-0 z-50 bg-neutral-950/80 backdrop-blur-sm flex items-center justify-center">
+          <div className="bg-neutral-900 border border-neutral-800 rounded-2xl px-5 py-4 text-center shadow-2xl">
+            <div className="w-8 h-8 border-2 border-sky-400 border-t-transparent rounded-full animate-spin mx-auto" />
+            <p className="mt-3 text-sm font-semibold text-sky-400">Cargando tu tienda...</p>
+          </div>
+        </div>
+      )}
+
+      {errorDatos && (
+        <div className="mx-4 mt-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
+          {errorDatos}
+        </div>
+      )}
       
       {subiendoImagen && (
         <div className="fixed top-4 left-1/2 -translate-x-1/2 bg-sky-500 text-neutral-950 px-5 py-2.5 rounded-full font-black text-xs z-50 shadow-xl">
@@ -547,209 +493,40 @@ export default function HomeCliente() {
 
       {/* VISTA 3: PANEL ADMINISTRADOR */}
       {vistaActual === 'admin' && (
-        <div className="p-4 space-y-4">
-          <div className="flex justify-between items-center mb-2">
-            <div>
-              <h2 className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-amber-500">⚙️ Panel Admin</h2>
-              <span className="text-[11px] text-neutral-500">Manejo Masivo de Stock</span>
+        !isAdminAutenticado ? (
+          <div className="p-4">
+            <div className="rounded-2xl border border-neutral-700/40 bg-neutral-800/70 p-4 space-y-3">
+              <div>
+                <h2 className="text-xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-amber-500">🔐 Acceso administrativo</h2>
+                <p className="text-[11px] text-neutral-400 mt-1">Ingresá tu correo y contraseña de Firebase para administrar la tienda.</p>
+              </div>
+              <form onSubmit={iniciarSesionAdmin} className="space-y-2">
+                <input type="email" placeholder="Correo del administrador" value={adminEmail} onChange={(e) => setAdminEmail(e.target.value)} className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-2.5 px-3 text-xs text-white" required />
+                <input type="password" placeholder="Contraseña" value={adminPassword} onChange={(e) => setAdminPassword(e.target.value)} className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-2.5 px-3 text-xs text-white" required />
+                {authError && <p className="text-[11px] text-red-400">{authError}</p>}
+                <button type="submit" disabled={authLoading} className="w-full rounded-xl bg-sky-500 text-neutral-950 font-black py-2.5 text-xs uppercase tracking-wider disabled:opacity-60">
+                  {authLoading ? 'Verificando...' : 'Ingresar al panel'}
+                </button>
+              </form>
             </div>
-            <div className="flex gap-2">
-              <button onClick={cerrarSesionAdmin} className="bg-red-500/10 border border-red-500/20 text-red-400 p-2 rounded-xl hover:bg-red-500/20"><LogOut size={14} /></button>
-              <button onClick={() => setVistaActual('menu')} className="bg-neutral-800 text-white font-bold py-2 px-3 rounded-xl text-xs">Menu</button>
-            </div>
           </div>
-
-          {/* CAJA */}
-          <div className="bg-neutral-800/60 rounded-2xl border border-neutral-700/30 overflow-hidden">
-            <button onClick={() => toggleSeccionAdmin('caja')} className="w-full p-4 flex justify-between items-center font-black text-xs uppercase tracking-wider text-yellow-500">
-              <span className="flex items-center gap-2"><DollarSign size={14}/> Cierre de Caja y Métricas</span>
-              {seccionAdminAbierta === 'caja' ? <ChevronUp size={16}/> : <ChevronDown size={16}/>}
-            </button>
-            {seccionAdminAbierta === 'caja' && (
-              <div className="p-4 pt-0 space-y-3 border-t border-neutral-800/50">
-                <div className="grid grid-cols-2 gap-3 mt-3">
-                  <div className="bg-neutral-900/90 p-3 rounded-xl border border-neutral-800">
-                    <p className="text-[10px] text-neutral-500 font-bold uppercase">Pedidos en Turno</p>
-                    <p className="text-2xl font-black text-sky-400 mt-1">{contadorPedidos}</p>
-                  </div>
-                  <div className="bg-neutral-900/90 p-3 rounded-xl border border-neutral-800">
-                    <p className="text-[10px] text-neutral-500 font-bold uppercase">Total Recaudado</p>
-                    <p className="text-xl font-black text-emerald-400 mt-1">${cajaAcumulada.toLocaleString('es-AR')}</p>
-                  </div>
-                </div>
-                <button onClick={ejecutarCierreCaja} className="w-full bg-red-500/10 text-red-400 border border-red-500/30 font-bold py-2.5 rounded-xl text-xs uppercase tracking-wider">Efectuar Cierre de Turno</button>
-              </div>
-            )}
-          </div>
-
-          {/* DATOS COMERCIO */}
-          <div className="bg-neutral-800/60 rounded-2xl border border-neutral-700/30 overflow-hidden">
-            <button onClick={() => toggleSeccionAdmin('datos')} className="w-full p-4 flex justify-between items-center font-black text-xs uppercase tracking-wider text-sky-400">
-              <span className="flex items-center gap-2"><User size={14}/> Información del Comercio</span>
-              {seccionAdminAbierta === 'datos' ? <ChevronUp size={16}/> : <ChevronDown size={16}/>}
-            </button>
-            {seccionAdminAbierta === 'datos' && (
-              <div className="p-4 pt-3 space-y-3 border-t border-neutral-800/50">
-                <input type="text" placeholder="Nombre del Local" value={infoLocal.nombre} onChange={e=>setInfoLocal({...infoLocal, nombre: e.target.value})} className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-2.5 px-3 text-xs text-white" />
-                <textarea placeholder="Descripción / Slogan" value={infoLocal.descripcion} onChange={e=>setInfoLocal({...infoLocal, descripcion: e.target.value})} className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-2.5 px-3 text-xs h-16 text-white" />
-                <input type="text" placeholder="Dirección Comercial" value={infoLocal.direccion} onChange={e=>setInfoLocal({...infoLocal, direccion: e.target.value})} className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-2.5 px-3 text-xs text-white" />
-                <input type="text" placeholder="WhatsApp (Con código de área, ej: 549...)" value={infoLocal.telefonoWhatsApp} onChange={e=>setInfoLocal({...infoLocal, telefonoWhatsApp: e.target.value})} className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-2.5 px-3 text-xs text-white" />
-                <input type="number" placeholder="Costo de Envío Fijo ($)" value={infoLocal.costoEnvio || ''} onChange={e=>setInfoLocal({...infoLocal, costoEnvio: Number(e.target.value)})} className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-2.5 px-3 text-xs text-white" />
-              </div>
-            )}
-          </div>
-
-          {/* IMÁGENES */}
-          <div className="bg-neutral-800/60 rounded-2xl border border-neutral-700/30 overflow-hidden">
-            <button onClick={() => toggleSeccionAdmin('fotos')} className="w-full p-4 flex justify-between items-center font-black text-xs uppercase tracking-wider text-sky-400">
-              <span className="flex items-center gap-2"><Camera size={14}/> Identidad Visual e Imágenes</span>
-              {seccionAdminAbierta === 'fotos' ? <ChevronUp size={16}/> : <ChevronDown size={16}/>}
-            </button>
-            {seccionAdminAbierta === 'fotos' && (
-              <div className="p-4 pt-3 grid grid-cols-2 gap-4 border-t border-neutral-800/50">
-                <div className="flex flex-col items-center justify-center p-3 bg-neutral-900/80 rounded-xl border border-neutral-800 text-center">
-                  <span className="text-[10px] text-neutral-400 font-bold mb-2">Foto Portada</span>
-                  <img src={infoLocal.portadaUrl} className="w-full h-16 rounded-md object-cover opacity-60 mb-2" alt="" />
-                  <label className="cursor-pointer bg-neutral-800 hover:bg-neutral-700 text-white font-bold text-[10px] py-1 px-2.5 rounded border border-neutral-700 transition-colors">
-                     Cambiar
-                    <input type="file" accept="image/*" onChange={e => handleFileChange(e, 'portada')} className="hidden" />
-                  </label>
-                </div>
-                <div className="flex flex-col items-center justify-center p-3 bg-neutral-900/80 rounded-xl border border-neutral-800 text-center">
-                  <span className="text-[10px] text-neutral-400 font-bold mb-2">Logo / Perfil</span>
-                  <img src={infoLocal.avatarUrl} className="w-12 h-12 rounded-full object-cover border border-sky-400/30 mb-2" alt="" />
-                  <label className="cursor-pointer bg-neutral-800 hover:bg-neutral-700 text-white font-bold text-[10px] py-1 px-2.5 rounded border border-neutral-700 transition-colors">
-                     Cambiar
-                    <input type="file" accept="image/*" onChange={e => handleFileChange(e, 'avatar')} className="hidden" />
-                  </label>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* COBROS */}
-          <div className="bg-neutral-800/60 rounded-2xl border border-neutral-700/30 overflow-hidden">
-            <button onClick={() => toggleSeccionAdmin('cobros')} className="w-full p-4 flex justify-between items-center font-black text-xs uppercase tracking-wider text-sky-400">
-              <span className="flex items-center gap-2"><CreditCard size={14}/> Cuentas de Transferencia</span>
-              {seccionAdminAbierta === 'cobros' ? <ChevronUp size={16}/> : <ChevronDown size={16}/>}
-            </button>
-            {seccionAdminAbierta === 'cobros' && (
-              <div className="p-4 pt-3 space-y-3 border-t border-neutral-800/50">
-                <input type="text" placeholder="CBU / CVU Bancario" value={infoLocal.cbuCvu} onChange={e=>setInfoLocal({...infoLocal, cbuCvu: e.target.value})} className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-2.5 px-3 text-xs text-white" />
-                <input type="text" placeholder="Alias de Cuenta" value={infoLocal.alias} onChange={e=>setInfoLocal({...infoLocal, alias: e.target.value})} className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-2.5 px-3 text-xs text-white" />
-              </div>
-            )}
-          </div>
-
-          {/* CATEGORÍAS */}
-          <div className="bg-neutral-800/60 rounded-2xl border border-neutral-700/30 overflow-hidden">
-            <button onClick={() => toggleSeccionAdmin('categorias')} className="w-full p-4 flex justify-between items-center font-black text-xs uppercase tracking-wider text-sky-400">
-              <span className="flex items-center gap-2"><Layers size={14}/> Estructura de Secciones</span>
-              {seccionAdminAbierta === 'categorias' ? <ChevronUp size={16}/> : <ChevronDown size={16}/>}
-            </button>
-            {seccionAdminAbierta === 'categorias' && (
-              <div className="p-4 pt-3 space-y-3 border-t border-neutral-800/50">
-                <div className="flex gap-2">
-                  <input type="text" placeholder="Agregar nueva sección (Ej: postres)" value={nuevaCat} onChange={e=>setNuevaCat(e.target.value)} className="flex-1 bg-neutral-900 border border-neutral-700 rounded-xl py-2 px-3 text-xs text-white" />
-                  <button type="button" onClick={()=>{ if(nuevaCat){ const n = nuevaCat.toLowerCase().trim(); setCategorias([...categorias, n]); setNuevaCat(''); } }} className="bg-sky-500 text-neutral-950 px-4 rounded-xl text-xs font-black">+</button>
-                </div>
-                <div className="flex flex-wrap gap-1.5 pt-1">
-                  {categorias.map(cat => (
-                    <span key={cat} className="bg-neutral-900 text-neutral-400 text-[10px] font-bold px-2.5 py-1 rounded-md border border-neutral-700 flex items-center gap-1 capitalize">
-                      {cat}
-                      <X size={10} className="text-red-400 cursor-pointer" onClick={()=>{ if(window.confirm(`¿Borrar "${cat}"?`)) setCategorias(categorias.filter(c=>c!==cat)); }} />
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* PRODUCTOS */}
-          <div className="bg-neutral-800/60 rounded-2xl border border-neutral-700/30 overflow-hidden">
-            <button onClick={() => toggleSeccionAdmin('productos')} className="w-full p-4 flex justify-between items-center font-black text-xs uppercase tracking-wider text-emerald-400">
-              <span className="flex items-center gap-2"><ShoppingBag size={14}/> Gestión de Productos</span>
-              {seccionAdminAbierta === 'productos' ? <ChevronUp size={16}/> : <ChevronDown size={16}/>}
-            </button>
-            {seccionAdminAbierta === 'productos' && (
-              <div className="p-4 pt-3 space-y-4 border-t border-neutral-800/50">
-                
-                <div className="relative">
-                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500" />
-                  <input 
-                    type="text" 
-                    placeholder="Buscar producto por nombre..." 
-                    value={busquedaAdmin}
-                    onChange={e => setBusquedaAdmin(e.target.value)}
-                    className="w-full bg-neutral-950 border border-neutral-800 rounded-xl py-2 pl-9 pr-8 text-xs text-white focus:outline-none focus:border-emerald-500 placeholder-neutral-600"
-                  />
-                  {busquedaAdmin && <X size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 cursor-pointer" onClick={() => setBusquedaAdmin('')} />}
-                </div>
-
-                <div className="flex justify-between items-center bg-neutral-950 p-2.5 rounded-xl border border-neutral-800 cursor-pointer" onClick={() => setMostrarFormularioProd(!mostrarFormularioProd)}>
-                  <span className="text-[11px] font-black text-yellow-400 uppercase">{editandoProductoId ? "✏️ Editando Producto" : "➕ Crear Nuevo Artículo"}</span>
-                  {mostrarFormularioProd ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                </div>
-
-                {mostrarFormularioProd && (
-                  <div className="bg-neutral-950/80 p-3 rounded-xl border border-neutral-800/60 space-y-2">
-                    <input type="text" placeholder="Nombre del plato/bebida" value={prodForm.nombre} onChange={e=>setProdForm({...prodForm, nombre: e.target.value})} className="w-full bg-neutral-800 border border-neutral-700 rounded-lg py-1.5 px-3 text-xs text-white" />
-                    <input type="text" placeholder="Detalle o descripción del contenido" value={prodForm.descripcion} onChange={e=>setProdForm({...prodForm, descripcion: e.target.value})} className="w-full bg-neutral-800 border border-neutral-700 rounded-lg py-1.5 px-3 text-xs text-white" />
-                    <input type="number" placeholder="Precio de Venta ($)" value={prodForm.precio || ''} onChange={e=>setProdForm({...prodForm, precio: Number(e.target.value)})} className="w-full bg-neutral-800 border border-neutral-700 rounded-lg py-1.5 px-3 text-xs text-white" />
-                    <select value={prodForm.categoria} onChange={e=>setProdForm({...prodForm, categoria: e.target.value})} className="w-full bg-neutral-800 border border-neutral-700 rounded-lg py-1.5 px-3 text-xs capitalize text-white">
-                      {categorias.map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
-                    <input type="file" accept="image/*" onChange={e=>handleFileChange(e,'producto')} className="text-[10px]" />
-                    <button type="button" disabled={subiendoImagen || !prodForm.nombre || !prodForm.precio} onClick={() => {
-                      const imgF = prodForm.imagen.trim() !== "" ? prodForm.imagen : "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?q=80&w=500";
-                      let lN = editandoProductoId ? productos.map(p => p.id === editandoProductoId ? { ...prodForm, imagen: imgF, id: editandoProductoId } : p) : [...productos, { ...prodForm, imagen: imgF, id: 'prod_' + Date.now(), activo: true }];
-                      setProductos(lN); localStorage.setItem('local_productos', JSON.stringify(lN));
-                      setEditandoProductoId(null); setProdForm({ nombre: '', descripcion: '', precio: 0, categoria: categoriaAdminActiva, imagen: '', activo: true }); setMostrarFormularioProd(false);
-                    }} className="w-full bg-gradient-to-r from-yellow-400 to-yellow-500 text-neutral-950 font-black py-2 rounded-lg text-xs uppercase">Guardar Artículo</button>
-                  </div>
-                )}
-
-                {!busquedaAdmin.trim() && (
-                  <div className="border-t border-neutral-800/80 pt-2">
-                    <div className="flex gap-1.5 overflow-x-auto pb-2 scrollbar-none">
-                      {categorias.map(cat => (
-                        <button key={cat} type="button" onClick={() => setCategoriaAdminActiva(cat)} className={`px-3 py-1.5 rounded-xl capitalize font-bold text-[11px] ${categoriaAdminActiva === cat ? 'bg-sky-500 text-neutral-950' : 'bg-neutral-900 text-neutral-400'}`}>{cat}</button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                <div className="space-y-2 max-h-[250px] overflow-y-auto pr-1">
-                  {productosFiltradosAdmin.length === 0 ? (
-                    <p className="text-center py-4 text-neutral-500 text-[11px]">No se encontraron artículos.</p>
-                  ) : (
-                    productosFiltradosAdmin.map(p => (
-                      <div key={p.id} className={`flex items-center justify-between p-2 rounded-xl border text-xs transition-colors ${p.activo !== false ? 'bg-neutral-900/60 border-neutral-800' : 'bg-neutral-950/40 border-neutral-900 opacity-60'}`}>
-                        <div className="flex items-center gap-2 truncate">
-                          <img src={p.imagen} className="w-10 h-10 rounded-lg object-cover flex-shrink-0" alt="" />
-                          <div className="truncate">
-                            <p className="font-bold text-white truncate flex items-center gap-1">
-                              {p.nombre} 
-                              {p.activo === false && <span className="text-[9px] px-1 bg-red-500/20 text-red-400 font-medium rounded">Pausado</span>}
-                            </p>
-                            <p className="text-[10px] text-yellow-500 font-black">${p.precio}</p>
-                          </div>
-                        </div>
-                        <div className="flex gap-1 ml-2 flex-shrink-0">
-                          <button onClick={() => toggleActivoProducto(p.id)} className={`p-2 rounded-lg transition-colors ${p.activo !== false ? 'text-emerald-400 bg-emerald-950/40' : 'text-red-400 bg-red-950/40'}`}>
-                            {p.activo !== false ? <Eye size={12}/> : <EyeOff size={12}/>}
-                          </button>
-                          <button onClick={()=>{ setEditandoProductoId(p.id); setProdForm({ ...p, activo: p.activo !== false }); setMostrarFormularioProd(true); }} className="p-2 text-sky-400 bg-neutral-800 rounded-lg"><Edit2 size={12}/></button>
-                          <button onClick={()=>{ if(window.confirm(`¿Eliminar?`)){ const f = productos.filter(pr=>pr.id!==p.id); setProductos(f); localStorage.setItem('local_productos', JSON.stringify(f)); } }} className="p-2 text-red-400 bg-neutral-800 rounded-lg"><Trash2 size={12}/></button>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
+        ) : (
+          <AdminPanel
+            infoLocal={infoLocal}
+            setInfoLocal={setInfoLocal}
+            productos={productos}
+            setProductos={setProductos}
+            categorias={categorias}
+            setCategorias={setCategorias}
+            contadorPedidos={contadorPedidos}
+            cajaAcumulada={cajaAcumulada}
+            onCerrarSesion={cerrarSesionAdmin}
+            onVolverMenu={() => setVistaActual('menu')}
+            onEjecutarCierreCaja={ejecutarCierreCaja}
+            subiendoImagen={subiendoImagen}
+            onFileChange={handleFileChange}
+          />
+        )
       )}
 
       {/* NAV INFERIOR */}
