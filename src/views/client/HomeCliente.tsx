@@ -1,11 +1,11 @@
 // src/views/client/HomeCliente.tsx
 import React, { useState, useEffect } from 'react';
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'firebase/auth';
-import { auth } from '../../firebase';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { auth, db } from '../../firebase';
 import {
   getShopConfigData,
   saveShopConfigData,
-  suscribirProductos,
   infoLocalPorDefecto,
   productosPorDefecto,
   categoriesPorDefecto,
@@ -54,7 +54,46 @@ export default function HomeCliente() {
 
   useEffect(() => {
     let activo = true;
+    const docRef = doc(db, 'shop', 'config');
 
+    /**
+     * Aplica datos desde Firestore al estado.
+     * Garantiza que infoLocal preserve todos sus campos incluyendo portadaUrl y avatarUrl.
+     */
+    const aplicarDatosDesdeFirestore = (data: Partial<{ infoLocal: InfoLocal; productos: Producto[]; categorias: string[] }> | null | undefined) => {
+      if (!activo) return;
+
+      if (!data) {
+        setInfoLocal(infoLocalPorDefecto);
+        setProductos(productosPorDefecto.map((producto) => ({ ...producto, activo: producto.activo !== false })));
+        setCategorias(categoriesPorDefecto);
+        setLoadingDatos(false);
+        return;
+      }
+
+      // Merge robusto de infoLocal: por defecto + datos de Firestore
+      // Esto asegura que campos como portadaUrl no se pierdan
+      if (data.infoLocal) {
+        setInfoLocal({
+          ...infoLocalPorDefecto,
+          ...data.infoLocal,
+        });
+      } else {
+        setInfoLocal(infoLocalPorDefecto);
+      }
+
+      // Actualiza productos y categorías
+      setProductos(
+        Array.isArray(data.productos)
+          ? data.productos.map((producto) => ({ ...producto, activo: producto.activo !== false }))
+          : productosPorDefecto.map((producto) => ({ ...producto, activo: producto.activo !== false }))
+      );
+      setCategorias(Array.isArray(data.categorias) ? data.categorias : categoriesPorDefecto);
+      setErrorDatos(null);
+      setLoadingDatos(false);
+    };
+
+    // Carga inicial desde Firestore y luego activa el listener en tiempo real
     const cargarDesdeNube = async () => {
       try {
         setLoadingDatos(true);
@@ -62,32 +101,41 @@ export default function HomeCliente() {
         const data = await getShopConfigData();
 
         if (!activo) return;
-
-        setInfoLocal(data.infoLocal);
-        setProductos(data.productos.map((producto) => ({ ...producto, activo: producto.activo !== false })));
-        setCategorias(data.categorias);
+        aplicarDatosDesdeFirestore(data);
       } catch (error) {
         console.error('Error al cargar datos de Firebase:', error);
         if (activo) {
           setErrorDatos('No se pudieron cargar los datos desde Firebase. Se usaron los valores por defecto.');
           setInfoLocal(infoLocalPorDefecto);
-          setProductos(productosPorDefecto);
+          setProductos(productosPorDefecto.map((producto) => ({ ...producto, activo: producto.activo !== false })));
           setCategorias(categoriesPorDefecto);
+          setLoadingDatos(false);
         }
-      } finally {
-        if (activo) setLoadingDatos(false);
       }
     };
 
-    cargarDesdeNube();
+    // Inicia carga inicial
+    void cargarDesdeNube();
 
-    const unsubscribe = suscribirProductos((data) => {
-      if (!activo) return;
-      setProductos(data.productos.map((producto) => ({ ...producto, activo: producto.activo !== false })));
-      setInfoLocal(data.infoLocal);
-      setCategorias(data.categorias);
-      setLoadingDatos(false);
-    });
+    // Listener en tiempo real: escucha cambios en el documento de configuración
+    const unsubscribe = onSnapshot(
+      docRef,
+      (snapshot) => {
+        if (!activo) return;
+        if (snapshot.exists()) {
+          const data = snapshot.data() as Partial<{ infoLocal: InfoLocal; productos: Producto[]; categorias: string[] }> | undefined;
+          aplicarDatosDesdeFirestore(data);
+        } else {
+          aplicarDatosDesdeFirestore(null);
+        }
+      },
+      (error) => {
+        console.error('Error al escuchar cambios en Firestore:', error);
+        if (activo) {
+          setErrorDatos('Se perdió la conexión con la base de datos en tiempo real.');
+        }
+      }
+    );
 
     return () => {
       activo = false;
