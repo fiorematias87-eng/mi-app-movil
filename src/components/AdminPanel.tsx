@@ -37,7 +37,7 @@ interface AdminPanelProps {
   onVolverMenu: () => void;
   onEjecutarCierreCaja: () => void;
   subiendoImagen: boolean;
-  onFileChange: (event: React.ChangeEvent<HTMLInputElement>, tipo: 'portada' | 'avatar' | 'producto') => Promise<void>;
+  onFileChange: (event: React.ChangeEvent<HTMLInputElement>, tipo: 'portada' | 'avatar' | 'producto') => Promise<string | undefined>;
 }
 
 type ProductoFormState = {
@@ -143,10 +143,27 @@ export default function AdminPanel({
     }
   };
 
+  const esUrlValida = (url: string) => {
+    try {
+      new URL(url);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
   const handleGuardarProducto = async () => {
     if (!prodForm.nombre.trim() || !prodForm.precio) return;
+    if (subiendoImagen) {
+      alert('Espera a que la imagen termine de subir antes de guardar el producto.');
+      return;
+    }
 
-    const imagenFinal = prodForm.imagen.trim() !== '' ? prodForm.imagen : 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?q=80&w=500';
+    const imagenValida = prodForm.imagen.trim() !== '' && esUrlValida(prodForm.imagen.trim());
+    const imagenFinal = imagenValida
+      ? prodForm.imagen.trim()
+      : 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?q=80&w=500';
+
     const productoBase: Producto = {
       id: editandoProductoId || `prod_${Date.now()}`,
       nombre: prodForm.nombre.trim(),
@@ -371,7 +388,18 @@ export default function AdminPanel({
                 <select value={prodForm.categoria} onChange={(e) => setProdForm({ ...prodForm, categoria: e.target.value })} className="w-full bg-neutral-800 border border-neutral-700 rounded-lg py-1.5 px-3 text-xs capitalize text-white" disabled={suscripcionActiva === false}>
                   {categorias.map((c) => <option key={c} value={c}>{c}</option>)}
                 </select>
-                <input type="file" accept="image/*" onChange={(e) => void onFileChange(e, 'producto')} className="text-[10px]" disabled={suscripcionActiva === false} />
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={async (e) => {
+                    const url = await onFileChange(e, 'producto');
+                    if (url) {
+                      setProdForm((prev) => ({ ...prev, imagen: url }));
+                    }
+                  }}
+                  className="text-[10px]"
+                  disabled={suscripcionActiva === false}
+                />
                 <button type="button" disabled={subiendoImagen || suscripcionActiva === false || guardando || !prodForm.nombre || !prodForm.precio} onClick={() => void handleGuardarProducto()} className="w-full bg-gradient-to-r from-yellow-400 to-yellow-500 text-neutral-950 font-black py-2 rounded-lg text-xs uppercase disabled:opacity-60">{guardando ? 'Guardando…' : 'Guardar Artículo'}</button>
               </div>
             )}
