@@ -14,7 +14,7 @@ import {
 } from '../../firebase/db';
 import {
   ShoppingBag, ShoppingCart, MessageSquare, MapPin, Plus, Minus,
-  Trash2, Star, X, ExternalLink, Search,
+  Trash2, Star, X, ExternalLink, Search, Lock,
 } from 'lucide-react';
 import AdminPanel from '../../components/AdminPanel';
 
@@ -28,7 +28,7 @@ interface ItemDelCarrito {
 
 type MetodoPago = 'efectivo' | 'transferencia';
 
-export default function HomeCliente() {
+export default function HomeCliente({ onInitialized }: { onInitialized?: () => void }) {
   const [infoLocal, setInfoLocal] = useState<InfoLocal>(infoLocalPorDefecto);
   const [productos, setProductos] = useState<Producto[]>(productosPorDefecto);
   const [categorias, setCategorias] = useState<string[]>(categoriesPorDefecto);
@@ -102,6 +102,10 @@ export default function HomeCliente() {
 
         if (!activo) return;
         aplicarDatosDesdeFirestore(data);
+        // Notifica al contenedor que la carga inicial ya finalizó
+        try {
+          onInitialized?.();
+        } catch {}
       } catch (error) {
         console.error('Error al cargar datos de Firebase:', error);
         if (activo) {
@@ -110,6 +114,9 @@ export default function HomeCliente() {
           setProductos(productosPorDefecto.map((producto) => ({ ...producto, activo: producto.activo !== false })));
           setCategorias(categoriesPorDefecto);
           setLoadingDatos(false);
+          try {
+            onInitialized?.();
+          } catch {}
         }
       }
     };
@@ -398,7 +405,11 @@ export default function HomeCliente() {
           </div>
           <div className="px-4 -mt-14 relative flex flex-col items-center text-center mb-2">
             <img src={infoLocal.avatarUrl} alt="Logo" className="w-24 h-24 rounded-full border-4 border-sky-400 object-cover shadow-xl bg-neutral-900" />
-            <div className="flex gap-1 mt-2 text-yellow-500"><Star size={16} fill="currentColor" /><Star size={20} fill="currentColor" className="-mt-1" /><Star size={16} fill="currentColor" /></div>
+            <div className="flex gap-1 mt-2 text-yellow-500">
+              <Star size={16} fill="currentColor" className="float-slow" style={{ animationDelay: '0s' }} />
+              <Star size={20} fill="currentColor" className="-mt-1 float-slower" style={{ animationDelay: '0.12s' }} />
+              <Star size={16} fill="currentColor" className="float-slow" style={{ animationDelay: '0.24s' }} />
+            </div>
             <h1 className="text-3xl font-black mt-1 text-transparent bg-clip-text bg-gradient-to-r from-sky-400 via-white to-sky-400 tracking-tight">{infoLocal.nombre}</h1>
             <p className="text-xs text-neutral-400 font-medium px-4 mt-1">{infoLocal.descripcion}</p>
             
@@ -578,18 +589,21 @@ export default function HomeCliente() {
       )}
 
       {/* NAV INFERIOR */}
-      <div className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-neutral-900/95 backdrop-blur-md border-t border-neutral-800 flex justify-around py-3 rounded-t-2xl z-30">
+      <div className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-neutral-900/95 backdrop-blur-md border-t border-neutral-800 flex justify-around items-center py-3 rounded-t-2xl z-30">
         <button onClick={() => setVistaActual('menu')} className={`flex flex-col items-center ${vistaActual === 'menu' ? 'text-sky-400 font-bold' : 'text-neutral-500'}`}>
           <ShoppingBag size={20} /><span className="text-[10px] mt-1">Menú</span>
         </button>
+
         <button onClick={() => setVistaActual('carrito')} className={`flex flex-col items-center relative ${vistaActual === 'carrito' ? 'text-sky-400 font-bold' : 'text-neutral-500'}`}>
           <ShoppingCart size={20} /><span className="text-[10px] mt-1">Carrito</span>
           {cantidadTotalProductos > 0 && <span className="absolute -top-1 right-2 bg-sky-500 text-neutral-950 text-[9px] font-black w-4 h-4 rounded-full flex items-center justify-center">{cantidadTotalProductos}</span>}
         </button>
-      </div>
 
-      {/* ACCESO OCULTO AL PANEL DE CONTROL */}
-      <button onClick={accederAlAdminSeguro} className="absolute bottom-0 left-0 right-0 h-4 bg-transparent z-40 cursor-default focus:outline-none" />
+        <button onClick={accederAlAdminSeguro} className={`flex items-center gap-2 p-2 rounded-lg ${vistaActual === 'admin' ? 'text-sky-400 bg-neutral-800/60' : 'text-neutral-400 hover:text-sky-400'}`} aria-label="Acceso administrativo">
+          <Lock size={16} />
+          <span className="text-[10px] hidden">Admin</span>
+        </button>
+      </div>
 
     </div>
   );

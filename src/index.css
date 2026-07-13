@@ -1,1 +1,22 @@
 @import "tailwindcss";
+
+/* Small floating animations for decorative stars */
+@keyframes float-slow {
+	0% { transform: translateY(0); }
+	50% { transform: translateY(-4px); }
+	100% { transform: translateY(0); }
+}
+
+@keyframes float-slower {
+	0% { transform: translateY(0); }
+	50% { transform: translateY(-2px); }
+	100% { transform: translateY(0); }
+}
+
+.float-slow {
+	animation: float-slow 3.5s ease-in-out infinite;
+}
+
+.float-slower {
+	animation: float-slower 4.2s ease-in-out infinite;
+}
