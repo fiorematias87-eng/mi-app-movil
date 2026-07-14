@@ -60,6 +60,25 @@ export default function HomeCliente({
   const [carrito, setCarrito] = useState<ItemDelCarrito[]>([]);
   const [vistaActual, setVistaActual] = useState<'menu' | 'carrito' | 'admin'>('menu');
   const [busqueda, setBusqueda] = useState('');
+
+  // Timeout de seguridad para evitar que subiendoImagen se quede en true
+  useEffect(() => {
+    if (subiendoImagen) {
+      const timeoutId = window.setTimeout(() => {
+        console.warn('Timeout de carga detectado, reseteando subiendoImagen');
+        setSubiendoImagen(false);
+      }, 30000); // 30 segundos máximo
+      return () => window.clearTimeout(timeoutId);
+    }
+    return undefined;
+  }, [subiendoImagen]);
+
+  // Resetear subiendoImagen al cambiar de vista
+  useEffect(() => {
+    if (vistaActual !== 'admin') {
+      setSubiendoImagen(false);
+    }
+  }, [vistaActual]);
   const [nombre, setNombre] = useState(() => {
     if (typeof window === 'undefined') return '';
     return window.localStorage.getItem('cliente_nombre') || '';
@@ -122,24 +141,8 @@ export default function HomeCliente({
     return unsubscribe;
   }, []);
 
-  useEffect(() => {
-    const docRef = doc(db, 'shop', 'config');
-    const unsubscribe = onSnapshot(
-      docRef,
-      (snapshot) => {
-        if (!snapshot.exists()) return;
-        const data = snapshot.data() as Partial<{ infoLocal: InfoLocal; productos: Producto[]; categorias: string[] }> | undefined;
-        if (data?.infoLocal) setInfoLocal(data.infoLocal as Partial<InfoLocal>);
-        if (Array.isArray(data?.productos)) setProductos(data.productos as Producto[]);
-        if (Array.isArray(data?.categorias)) setCategorias(data.categorias as string[]);
-      },
-      (error) => {
-        console.error('Error al escuchar cambios en Firestore:', error);
-      },
-    );
-
-    return () => unsubscribe();
-  }, []);
+  // Sincronizar cambios desde props (ya viene de App.tsx con datos persistidos)
+  // No necesitamos otro listener aquí ya que App.tsx se encarga de Firebase
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -216,12 +219,21 @@ export default function HomeCliente({
 
       const campo = tipo === 'portada' ? 'portadaUrl' : 'avatarUrl';
       const nuevaInfoLocal = { ...(infoLocal ?? {}), [campo]: urlNube };
+      
+      // Actualizar estado LOCAL inmediatamente
       setInfoLocal(nuevaInfoLocal);
-      try {
-        await saveShopConfigData({ infoLocal: nuevaInfoLocal, categorias, productos });
-      } catch (err) {
-        console.error('Error guardando infoLocal en Firestore:', err);
+      
+      // Actualizar localStorage INMEDIATAMENTE para feedback visual
+      if (typeof window !== 'undefined') {
+        const cached = window.localStorage.getItem('cached_infoLocal');
+        const current = cached ? JSON.parse(cached) : {};
+        window.localStorage.setItem('cached_infoLocal', JSON.stringify({ ...current, ...nuevaInfoLocal }));
       }
+
+      // Guardar en Firebase en background (sin esperar)
+      saveShopConfigData({ infoLocal: nuevaInfoLocal, categorias, productos }).catch((err) => {
+        console.error('Error guardando en Firebase:', err);
+      });
 
       return urlNube;
     } catch (error) {
@@ -382,9 +394,13 @@ export default function HomeCliente({
   return (
     <div className="max-w-md mx-auto bg-neutral-900 min-h-screen pb-24 shadow-2xl relative font-sans text-white border-x border-neutral-800">
       {subiendoImagen && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 bg-sky-500 text-neutral-950 px-5 py-2.5 rounded-full font-black text-xs z-50 shadow-xl">
-          ⏳ Guardando en la nube...
-        </div>
+        <>
+          <div className="fixed inset-0 bg-black/40 z-40 pointer-events-none" />
+          <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-sky-500 text-neutral-950 px-6 py-4 rounded-2xl font-black text-sm z-50 shadow-2xl pointer-events-none flex flex-col items-center gap-2">
+            <div className="animate-spin text-2xl">⏳</div>
+            <span>Guardando en la nube...</span>
+          </div>
+        </>
       )}
 
       {vistaActual === 'menu' && cantidadTotalProductos > 0 && (

@@ -7,9 +7,21 @@ import EsqueletoCarga from './components/EsqueletoCarga';
 
 export default function App() {
   const [isHydrated, setIsHydrated] = useState(false);
-  const [productos, setProductos] = useState<Producto[]>([]);
-  const [infoLocal, setInfoLocal] = useState<Partial<InfoLocal> | null>(null);
-  const [categorias, setCategorias] = useState<string[]>([]);
+  const [productos, setProductos] = useState<Producto[]>(() => {
+    if (typeof window === 'undefined') return [];
+    const cached = window.localStorage.getItem('cached_productos');
+    return cached ? JSON.parse(cached) : [];
+  });
+  const [infoLocal, setInfoLocal] = useState<Partial<InfoLocal> | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const cached = window.localStorage.getItem('cached_infoLocal');
+    return cached ? JSON.parse(cached) : null;
+  });
+  const [categorias, setCategorias] = useState<string[]>(() => {
+    if (typeof window === 'undefined') return [];
+    const cached = window.localStorage.getItem('cached_categorias');
+    return cached ? JSON.parse(cached) : [];
+  });
 
   useEffect(() => {
     let mounted = true;
@@ -31,11 +43,16 @@ export default function App() {
       (snapshot: DocumentSnapshot<DocumentData>) => {
         if (!mounted) return;
         const data = snapshot.exists() ? snapshot.data() : undefined;
-        setInfoLocal(data?.infoLocal ?? null);
-        setCategorias(Array.isArray(data?.categorias) ? data.categorias : []);
-        // Do NOT read `productos` from shop/config here. The collection `productos`
-        // is the single source of truth and is handled by its own onSnapshot below.
-        console.log('Configuración cargada');
+        const newInfoLocal = data?.infoLocal ?? null;
+        const newCategorias = Array.isArray(data?.categorias) ? data.categorias : [];
+        setInfoLocal(newInfoLocal);
+        setCategorias(newCategorias);
+        // Guardar en localStorage para persistencia
+        if (newInfoLocal) {
+          window.localStorage.setItem('cached_infoLocal', JSON.stringify(newInfoLocal));
+        }
+        window.localStorage.setItem('cached_categorias', JSON.stringify(newCategorias));
+        console.log('Configuración cargada desde Firebase');
         configReady = true;
         checkHydration();
       },
@@ -56,7 +73,9 @@ export default function App() {
           };
         });
         setProductos(listaProductos);
-        console.log('Productos cargados desde coleccion', listaProductos.length);
+        // Guardar en localStorage para persistencia
+        window.localStorage.setItem('cached_productos', JSON.stringify(listaProductos));
+        console.log('Productos cargados desde colección:', listaProductos.length);
         productosReady = true;
         checkHydration();
       },

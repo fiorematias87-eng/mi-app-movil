@@ -159,22 +159,27 @@ export const saveShopConfigData = async (
   }
 
   try {
-    await setDoc(CONFIG_DOC, data, { merge: true });
-    // también sincronizar con almacenamiento local
+    // Guardar en localStorage PRIMERO para feedback inmediato
     try {
-      const current = await getShopConfigData();
-      const merged: ShopConfigData = normalizarDatos({
-        infoLocal: data.infoLocal ?? current.infoLocal ?? undefined,
-        productos: data.productos ?? current.productos ?? undefined,
-        categorias: data.categorias ?? current.categorias ?? undefined,
-      });
+      const existente = leerDatosLocales();
+      const merged: ShopConfigData = {
+        infoLocal: data.infoLocal ?? existente.infoLocal ?? infoLocalPorDefecto,
+        productos: data.productos ?? existente.productos ?? productosPorDefecto,
+        categorias: data.categorias ?? existente.categorias ?? categoriesPorDefecto,
+      };
       guardarDatosLocales(merged);
-    } catch {
-      // noop
+    } catch (err) {
+      console.warn('Error actualizando localStorage:', err);
     }
+
+    // Guardar en Firebase en background sin esperar
+    setDoc(CONFIG_DOC, data, { merge: true }).catch((error) => {
+      console.error('Error guardando en Firestore:', error);
+    });
+
     return true;
   } catch (error) {
-    console.error("No se pudo guardar en Firestore:", error);
+    console.error("No se pudo guardar:", error);
     throw error;
   }
 };
