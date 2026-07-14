@@ -1,0 +1,352 @@
+[
+  {
+    "nombre": "Pizza Napolitana Premium",
+    "descripcion": "Masa de fermentación lenta con salsa de tomate San Marzano, mozzarella fior di latte y hojas de albahaca fresca.",
+    "precio": 3700,
+    "categoria": "pizzas",
+    "imagenUrl": "https://images.unsplash.com/photo-1513104890138-7c749659a591?auto=format&fit=crop&w=900&q=80"
+  },
+  {
+    "nombre": "Pizza Calabresa Artesanal",
+    "descripcion": "Tomate especiado, mozzarella fundente y rodajas de calabresa premium con un toque de orégano.",
+    "precio": 3950,
+    "categoria": "pizzas",
+    "imagenUrl": "https://images.unsplash.com/photo-1548365328-9a36c46e68d5?auto=format&fit=crop&w=900&q=80"
+  },
+  {
+    "nombre": "Pizza Cuatro Quesos Trufada",
+    "descripcion": "Mozzarella, provolone, roquefort y parmesano con un delicado aceite de trufa blanca.",
+    "precio": 4600,
+    "categoria": "pizzas",
+    "imagenUrl": "https://images.unsplash.com/photo-1542281286-9e0a16bb7366?auto=format&fit=crop&w=900&q=80"
+  },
+  {
+    "nombre": "Pizza Verde con Pesto",
+    "descripcion": "Base ligera, mozzarella fresca, pesto casero de albahaca, rúcula crujiente y parmesano en lascas.",
+    "precio": 4200,
+    "categoria": "pizzas",
+    "imagenUrl": "https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&w=900&q=80"
+  },
+  {
+    "nombre": "Pizza BBQ Smash",
+    "descripcion": "Salsa barbacoa suave, mozzarella, pulled pork desmenuzado y cebolla caramelizada con cilantro fresco.",
+    "precio": 4550,
+    "categoria": "pizzas",
+    "imagenUrl": "https://images.unsplash.com/photo-1511174511562-5f7f18b87291?auto=format&fit=crop&w=900&q=80"
+  },
+  {
+    "nombre": "Pizza Mediterránea Deluxe",
+    "descripcion": "Mozzarella, aceitunas Kalamata, tomates confitados, alcauciles y feta con un leve toque de limón.",
+    "precio": 4450,
+    "categoria": "pizzas",
+    "imagenUrl": "https://images.unsplash.com/photo-1504754524776-8f4f37790ca0?auto=format&fit=crop&w=900&q=80"
+  },
+  {
+    "nombre": "Pizza Caprese Deluxe",
+    "descripcion": "Mozzarella fresca, tomate en rodajas, pesto de albahaca y reducción de balsámico sobre base crujiente.",
+    "precio": 4350,
+    "categoria": "pizzas",
+    "imagenUrl": "https://images.unsplash.com/photo-1525755662778-989d0524087e?auto=format&fit=crop&w=900&q=80"
+  },
+  {
+    "nombre": "Pizza de Provoleta y Hongos",
+    "descripcion": "Provoleta derretida, mix de hongos salteados y pimienta negra sobre un lecho de salsa suave.",
+    "precio": 4250,
+    "categoria": "pizzas",
+    "imagenUrl": "https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?auto=format&fit=crop&w=900&q=80"
+  },
+  {
+    "nombre": "Pizza Provencial con Jamón Crudo",
+    "descripcion": "Mozzarella, tomates cherry, rúcula fresca y jamón crudo de primera calidad.",
+    "precio": 4800,
+    "categoria": "pizzas",
+    "imagenUrl": "https://images.unsplash.com/photo-1601924582975-4f8bfbd2d5a8?auto=format&fit=crop&w=900&q=80"
+  },
+  {
+    "nombre": "Pizza Fugazza con Provoleta",
+    "descripcion": "Cebolla dorada, provolone fundido, orégano y un exterior perfectamente dorado.",
+    "precio": 3650,
+    "categoria": "pizzas",
+    "imagenUrl": "https://images.unsplash.com/photo-1622964277888-a4ab42fcbcfd?auto=format&fit=crop&w=900&q=80"
+  },
+  {
+    "nombre": "Empanada Criolla Clásica",
+    "descripcion": "Relleno tradicional de carne vacuna, cebolla, pimiento y huevo duro en masa casera dorada.",
+    "precio": 520,
+    "categoria": "empanadas",
+    "imagenUrl": "https://images.unsplash.com/photo-1555992336-03a23c04be87?auto=format&fit=crop&w=900&q=80"
+  },
+  {
+    "nombre": "Empanada de Carne Patagónica",
+    "descripcion": "Corte selecto de vacuno patagónico, cebolla caramelizada y especias suaves en masa hojaldrada.",
+    "precio": 640,
+    "categoria": "empanadas",
+    "imagenUrl": "https://images.unsplash.com/photo-1473093295043-cdd812d0e601?auto=format&fit=crop&w=900&q=80"
+  },
+  {
+    "nombre": "Empanada de Jamón y Queso Premium",
+    "descripcion": "Jamón natural, queso mozzarella y un toque de puerro en una empanada jugosa y dorada.",
+    "precio": 600,
+    "categoria": "empanadas",
+    "imagenUrl": "https://images.unsplash.com/photo-1543353071-873f17a7a088?auto=format&fit=crop&w=900&q=80"
+  },
+  {
+    "nombre": "Empanada de Pollo al Verdeo",
+    "descripcion": "Pollo deshilachado, cremoso con salsa blanca y verdeo, en una masa fina y crujiente.",
+    "precio": 610,
+    "categoria": "empanadas",
+    "imagenUrl": "https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&w=900&q=80"
+  },
+  {
+    "nombre": "Empanada de Ricota y Espinaca",
+    "descripcion": "Ricota suave, espinaca fresca, queso parmesano y especias aromáticas en masa artesanal.",
+    "precio": 580,
+    "categoria": "empanadas",
+    "imagenUrl": "https://images.unsplash.com/photo-1604908177227-6b6c065c83d8?auto=format&fit=crop&w=900&q=80"
+  },
+  {
+    "nombre": "Empanada de Humita Dorada",
+    "descripcion": "Maíz dulce cremoso con salsa bechamel ligera y un toque de queso, envuelto en masa crocante.",
+    "precio": 590,
+    "categoria": "empanadas",
+    "imagenUrl": "https://images.unsplash.com/photo-1549045696-0ddd4b1d77f1?auto=format&fit=crop&w=900&q=80"
+  },
+  {
+    "nombre": "Empanada de Calabaza Ahumada",
+    "descripcion": "Calabaza glaseada, queso de cabra y semillas tostadas en una combinación otoñal premium.",
+    "precio": 650,
+    "categoria": "empanadas",
+    "imagenUrl": "https://images.unsplash.com/photo-1512621776951-a57141f2eefd?auto=format&fit=crop&w=900&q=80"
+  },
+  {
+    "nombre": "Empanada de Roquefort y Cebolla",
+    "descripcion": "Roquefort cremoso, cebolla caramelizada y un toque de pimienta, para un bocado sofisticado.",
+    "precio": 680,
+    "categoria": "empanadas",
+    "imagenUrl": "https://images.unsplash.com/photo-1551218808-94e220e084d2?auto=format&fit=crop&w=900&q=80"
+  },
+  {
+    "nombre": "Empanada de Chorizo y Morrón",
+    "descripcion": "Chorizo de calidad, morrones asados y especias criollas, en masa dorada y crujiente.",
+    "precio": 630,
+    "categoria": "empanadas",
+    "imagenUrl": "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=900&q=80"
+  },
+  {
+    "nombre": "Empanada de Cordero y Hinojo",
+    "descripcion": "Cordero patagónico, hinojo aromático y un toque de limón, ideal para paladares exigentes.",
+    "precio": 720,
+    "categoria": "empanadas",
+    "imagenUrl": "https://images.unsplash.com/photo-1555949963-aa79dcee981d?auto=format&fit=crop&w=900&q=80"
+  },
+  {
+    "nombre": "Hamburguesa Clásica Argenta",
+    "descripcion": "Carne Angus jugosa, cheddar, lechuga crujiente y cebolla morada en pan brioche dorado.",
+    "precio": 4800,
+    "categoria": "hamburguesas",
+    "imagenUrl": "https://images.unsplash.com/photo-1550547660-d9450f859349?auto=format&fit=crop&w=900&q=80"
+  },
+  {
+    "nombre": "Hamburguesa Cheddar Double",
+    "descripcion": "Dos medallones de carne, doble cheddar, panceta crocante y salsa especial de la casa.",
+    "precio": 5200,
+    "categoria": "hamburguesas",
+    "imagenUrl": "https://images.unsplash.com/photo-1550547660-d9450f859349?auto=format&fit=crop&w=900&q=80"
+  },
+  {
+    "nombre": "Hamburguesa Portobello Vegan",
+    "descripcion": "Champiñón portobello grillado, queso vegano, aguacate y brotes verdes en pan integral.",
+    "precio": 4600,
+    "categoria": "hamburguesas",
+    "imagenUrl": "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?auto=format&fit=crop&w=900&q=80"
+  },
+  {
+    "nombre": "Hamburguesa Barbacoa Deluxe",
+    "descripcion": "Carne Angus, cebolla caramelizada, queso cheddar y salsa barbacoa ahumada.",
+    "precio": 5250,
+    "categoria": "hamburguesas",
+    "imagenUrl": "https://images.unsplash.com/photo-1558642452-9d2a7deb7f62?auto=format&fit=crop&w=900&q=80"
+  },
+  {
+    "nombre": "Hamburguesa Crunchy Chicken",
+    "descripcion": "Pechuga crocante, repollo marinado y salsa de mostaza miel en pan suave.",
+    "precio": 4700,
+    "categoria": "hamburguesas",
+    "imagenUrl": "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=900&q=80"
+  },
+  {
+    "nombre": "Hamburguesa Pampa Angus",
+    "descripcion": "Medallón Angus, cheddar suizo, tomate heirloom y rúcula fresca en pan artesanal.",
+    "precio": 5400,
+    "categoria": "hamburguesas",
+    "imagenUrl": "https://images.unsplash.com/photo-1586190848861-99aa4a171e90?auto=format&fit=crop&w=900&q=80"
+  },
+  {
+    "nombre": "Hamburguesa Blue Cheese",
+    "descripcion": "Carne jugosa, queso azul cremoso, cebolla caramelizada y rúcula en pan brioche.",
+    "precio": 5350,
+    "categoria": "hamburguesas",
+    "imagenUrl": "https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&w=900&q=80"
+  },
+  {
+    "nombre": "Hamburguesa BBQ Smoke",
+    "descripcion": "Dobles medallones, cheddar, panceta ahumada y salsa BBQ de barbacoa lenta.",
+    "precio": 5450,
+    "categoria": "hamburguesas",
+    "imagenUrl": "https://images.unsplash.com/photo-1473093226795-af9932fe5856?auto=format&fit=crop&w=900&q=80"
+  },
+  {
+    "nombre": "Hamburguesa Bacon Jam",
+    "descripcion": "Carne Angus, queso cheddar, bacon glaseado y mermelada de cebolla en pan artesanal.",
+    "precio": 5600,
+    "categoria": "hamburguesas",
+    "imagenUrl": "https://images.unsplash.com/photo-1542345812-d98b5cd6cf98?auto=format&fit=crop&w=900&q=80"
+  },
+  {
+    "nombre": "Hamburguesa Doble Queso",
+    "descripcion": "Dos medallones, doble queso cheddar, pepinillos y salsa especial, para los amantes del queso.",
+    "precio": 5250,
+    "categoria": "hamburguesas",
+    "imagenUrl": "https://images.unsplash.com/photo-1550547660-d9450f859349?auto=format&fit=crop&w=900&q=80"
+  },
+  {
+    "nombre": "Limonada Rosada Natural",
+    "descripcion": "Exprimido de limón fresco con jarabe de frutos rojos y un toque de menta fresca.",
+    "precio": 450,
+    "categoria": "bebidas",
+    "imagenUrl": "https://images.unsplash.com/photo-1510626176961-4b537f4226b4?auto=format&fit=crop&w=900&q=80"
+  },
+  {
+    "nombre": "Vermut del Sur",
+    "descripcion": "Vermut artesanal con un toque de cítricos y bitter, servido con rodaja de naranja.",
+    "precio": 520,
+    "categoria": "bebidas",
+    "imagenUrl": "https://images.unsplash.com/photo-1543353071-873f17a7a088?auto=format&fit=crop&w=900&q=80"
+  },
+  {
+    "nombre": "Gaseosa Premium de Pomelo",
+    "descripcion": "Pomelo natural gasificado con azúcar de caña y un punto ácido refrescante.",
+    "precio": 390,
+    "categoria": "bebidas",
+    "imagenUrl": "https://images.unsplash.com/photo-1510626176961-4b537f4226b4?auto=format&fit=crop&w=900&q=80"
+  },
+  {
+    "nombre": "Té Frío de Hierbas",
+    "descripcion": "Blend casero de manzanilla, menta y limón, endulzado ligeramente con miel.",
+    "precio": 420,
+    "categoria": "bebidas",
+    "imagenUrl": "https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&w=900&q=80"
+  },
+  {
+    "nombre": "Cerveza Artesanal Rubia",
+    "descripcion": "Cerveza rubia premium, con aromas cítricos y cuerpo fresco, ideal para acompañar pizzas.",
+    "precio": 780,
+    "categoria": "bebidas",
+    "imagenUrl": "https://images.unsplash.com/photo-1532634896-26909d0d793a?auto=format&fit=crop&w=900&q=80"
+  },
+  {
+    "nombre": "Agua Mineral Premium",
+    "descripcion": "Agua mineral con gas de origen natural, servida fría y burbujeante.",
+    "precio": 330,
+    "categoria": "bebidas",
+    "imagenUrl": "https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&w=900&q=80"
+  },
+  {
+    "nombre": "Jugo de Naranja Exprimido",
+    "descripcion": "Naranjas recién exprimidas, sin conservantes, con sabor intenso y natural.",
+    "precio": 470,
+    "categoria": "bebidas",
+    "imagenUrl": "https://images.unsplash.com/photo-1504754524776-8f4f37790ca0?auto=format&fit=crop&w=900&q=80"
+  },
+  {
+    "nombre": "Cola Artesanal Negra",
+    "descripcion": "Refresco casero de cola con caramelo natural y notas de vainilla.",
+    "precio": 430,
+    "categoria": "bebidas",
+    "imagenUrl": "https://images.unsplash.com/photo-1510626176961-4b537f4226b4?auto=format&fit=crop&w=900&q=80"
+  },
+  {
+    "nombre": "Hugo de Frutos Rojos",
+    "descripcion": "Cóctel sin alcohol con frutos rojos, hierbabuena y soda fresca.",
+    "precio": 520,
+    "categoria": "bebidas",
+    "imagenUrl": "https://images.unsplash.com/photo-1497534446932-c925b458314e?auto=format&fit=crop&w=900&q=80"
+  },
+  {
+    "nombre": "Infusión Helada de Mango",
+    "descripcion": "Té helado con mango natural y un toque cítrico, ideal para refrescar.",
+    "precio": 460,
+    "categoria": "bebidas",
+    "imagenUrl": "https://images.unsplash.com/photo-1497534446932-c925b458314e?auto=format&fit=crop&w=900&q=80"
+  },
+  {
+    "nombre": "Brownie de Dulce de Leche",
+    "descripcion": "Brownie caliente con corazón de dulce de leche y crocante de nueces.",
+    "precio": 820,
+    "categoria": "postres",
+    "imagenUrl": "https://images.unsplash.com/photo-1542826438-4c7a08c15fb8?auto=format&fit=crop&w=900&q=80"
+  },
+  {
+    "nombre": "Helado Artesanal de Crema y Caramelo",
+    "descripcion": "Helado cremoso artesanal con hilos de caramelo salado y frutos secos.",
+    "precio": 760,
+    "categoria": "postres",
+    "imagenUrl": "https://images.unsplash.com/photo-1505253219025-5ad0c0ffe17f?auto=format&fit=crop&w=900&q=80"
+  },
+  {
+    "nombre": "Flan Casero con Dulce de Leche",
+    "descripcion": "Flan suave de huevo con dulce de leche artesanal y crema fresca.",
+    "precio": 710,
+    "categoria": "postres",
+    "imagenUrl": "https://images.unsplash.com/photo-1505253219025-5ad0c0ffe17f?auto=format&fit=crop&w=900&q=80"
+  },
+  {
+    "nombre": "Panqueque de Nutella Gourmet",
+    "descripcion": "Panqueque recién hecho, relleno de Nutella y frutas frescas.",
+    "precio": 770,
+    "categoria": "postres",
+    "imagenUrl": "https://images.unsplash.com/photo-1505253219025-5ad0c0ffe17f?auto=format&fit=crop&w=900&q=80"
+  },
+  {
+    "nombre": "Chocotorta Mini",
+    "descripcion": "Capas de galletas de chocolate, dulce de leche y queso crema en porción individual.",
+    "precio": 690,
+    "categoria": "postres",
+    "imagenUrl": "https://images.unsplash.com/photo-1505253219025-5ad0c0ffe17f?auto=format&fit=crop&w=900&q=80"
+  },
+  {
+    "nombre": "Tiramisú de Maracuyá",
+    "descripcion": "Tiramisú delicado con crema de maracuyá y bizcocho empapado en café.",
+    "precio": 850,
+    "categoria": "postres",
+    "imagenUrl": "https://images.unsplash.com/photo-1497534446932-c925b458314e?auto=format&fit=crop&w=900&q=80"
+  },
+  {
+    "nombre": "Cheesecake de Frutos Rojos",
+    "descripcion": "Cheesecake cremoso con base de galleta y coulis de frutos rojos.",
+    "precio": 820,
+    "categoria": "postres",
+    "imagenUrl": "https://images.unsplash.com/photo-1497534446932-c925b458314e?auto=format&fit=crop&w=900&q=80"
+  },
+  {
+    "nombre": "Alfajores de Maicena",
+    "descripcion": "Alfajores suaves rellenos de dulce de leche y cobertura de coco rallado.",
+    "precio": 380,
+    "categoria": "postres",
+    "imagenUrl": "https://images.unsplash.com/photo-1497534446932-c925b458314e?auto=format&fit=crop&w=900&q=80"
+  },
+  {
+    "nombre": "Mousse de Chocolate Belga",
+    "descripcion": "Mousse aireado con chocolate belga oscuro y crema chantilly.",
+    "precio": 800,
+    "categoria": "postres",
+    "imagenUrl": "https://images.unsplash.com/photo-1497534446932-c925b458314e?auto=format&fit=crop&w=900&q=80"
+  },
+  {
+    "nombre": "Copa de Frutos del Bosque",
+    "descripcion": "Copa fresca con crema pastelera, frutos rojos y crumble crocante.",
+    "precio": 790,
+    "categoria": "postres",
+    "imagenUrl": "https://images.unsplash.com/photo-1497534446932-c925b458314e?auto=format&fit=crop&w=900&q=80"
+  }
+]

@@ -148,16 +148,24 @@ export const getShopConfigData = async (): Promise<ShopConfigData> => {
   }
 };
 
-export const saveShopConfigData = async (payload: {
-  infoLocal: Partial<InfoLocal> | null;
-  categorias: string[];
-  productos?: Producto[];
-}): Promise<boolean> => {
-  const data: ShopConfigData = {
-    infoLocal: payload.infoLocal ?? null,
-    productos: payload.productos ?? [],
-    categorias: payload.categorias,
-  };
+export type SaveShopConfigDataPayload = Partial<ShopConfigData>;
+
+export const saveShopConfigData = async (
+  payload: SaveShopConfigDataPayload,
+): Promise<boolean> => {
+  const data: Partial<ShopConfigData> = {};
+
+  if (payload.infoLocal !== undefined) {
+    data.infoLocal = payload.infoLocal;
+  }
+
+  if (payload.productos !== undefined) {
+    data.productos = payload.productos;
+  }
+
+  if (payload.categorias !== undefined) {
+    data.categorias = payload.categorias;
+  }
 
   try {
     await setDoc(CONFIG_DOC, data, { merge: true });
@@ -172,7 +180,6 @@ export const guardarProductosEnFirebase = async (
   nuevosProductos: Producto[],
   infoLocal: Partial<InfoLocal> | null,
   categorias: string[],
-  _suscripcionActiva?: boolean,
 ): Promise<boolean> => {
   try {
     return await saveShopConfigData({
