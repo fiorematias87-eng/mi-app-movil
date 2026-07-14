@@ -1,8 +1,9 @@
 // src/views/client/HomeCliente.tsx
 import React, { useState, useEffect } from 'react';
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'firebase/auth';
-import { doc, updateDoc, setDoc } from 'firebase/firestore';
-import { auth, db } from '../../firebase';
+import { doc, updateDoc, setDoc, type DocumentData } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { auth, db, storage } from '../../firebase';
 import {
   type InfoLocal,
   type Producto,
@@ -62,9 +63,11 @@ export default function HomeCliente({
   const perfilVacio = !infoLocal;
 
   useEffect(() => {
-    setProductos(productosProp);
-    setInfoLocal(infoLocalProp ?? null);
-    setCategorias(categoriasProp);
+    Promise.resolve().then(() => {
+      setProductos(productosProp);
+      setInfoLocal(infoLocalProp ?? null);
+      setCategorias(categoriasProp);
+    });
   }, [productosProp, infoLocalProp, categoriasProp]);
 
   useEffect(() => {
@@ -107,38 +110,47 @@ export default function HomeCliente({
     });
   };
 
-  // === MANEJADOR CLOUDINARY ===
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>, tipo: 'portada' | 'avatar' | 'producto') => {
+  // === MANEJADOR DE IMÁGENES ===
+  const handleFileChange = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+    tipo: 'portada' | 'avatar' | 'producto',
+    productId?: string,
+  ) => {
     const file = e.target.files?.[0];
     if (!file) return undefined;
 
-    const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
-    const uploadPreset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
-
-    if (!cloudName || !uploadPreset) {
-      alert('Error de configuración de Cloudinary en las variables de entorno.');
-      return undefined;
-    }
-
     try {
       setSubiendoImagen(true);
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('upload_preset', uploadPreset);
 
-      const respuesta = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
-        method: 'POST',
-        body: formData,
-      });
+      const userId = auth.currentUser?.uid;
+      if (tipo !== 'producto' && !userId) {
+        throw new Error('No hay un usuario autenticado para guardar la imagen de perfil.');
+      }
 
-      if (!respuesta.ok) throw new Error('Error de subida');
-      const datosImagen = await respuesta.json();
-      const urlNube = datosImagen.secure_url;
+      let rutaStorage = '';
+      if (tipo === 'producto') {
+        if (!productId) {
+          throw new Error('Se requiere un productId para subir una imagen de producto.');
+        }
+        rutaStorage = `productos/${productId}/${Date.now()}.jpg`;
+      } else {
+        rutaStorage = `perfil/${userId}/${tipo === 'portada' ? 'portada.jpg' : 'avatar.jpg'}`;
+      }
+
+      const fileRef = ref(storage, rutaStorage);
+      await uploadBytes(fileRef, file);
+      const urlNube = await getDownloadURL(fileRef);
+
+      if (tipo === 'producto') {
+        await updateDoc(doc(db, 'productos', productId!), { imagen: urlNube });
+        return urlNube;
+      }
+
       const campoFirestore = tipo === 'portada' ? 'infoLocal.portadaUrl' : 'infoLocal.avatarUrl';
       const docRef = doc(db, 'shop', 'config');
 
       try {
-        await updateDoc(docRef, { [campoFirestore]: urlNube } as any);
+        await updateDoc(docRef, { [campoFirestore]: urlNube } as Partial<DocumentData>);
       } catch (error) {
         console.warn('No se pudo usar updateDoc, guardando con setDoc merge:', error);
         await setDoc(docRef, { infoLocal: { [tipo === 'portada' ? 'portadaUrl' : 'avatarUrl']: urlNube } }, { merge: true });
@@ -268,7 +280,7 @@ mensaje += `\n💵 *Subtotal:* $${subtotal.toLocaleString('es-AR')}\n🛵 *Enví
   const subtotalCarrito = carrito.reduce((acc, item) => acc + (item.precio * item.cantidad), 0);
 
   const productosFiltradosCliente = productos.filter(p => {
-    const estaActivo = p.activo !== false;
+    const estaActivo = !(p.hidden === true);
     const coincideCategoria = p.categoria === categoriaActiva;
     const coincideBusqueda = p.nombre.toLowerCase().includes(busqueda.toLowerCase()) || 
                              p.descripcion.toLowerCase().includes(busqueda.toLowerCase());

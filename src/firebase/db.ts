@@ -22,7 +22,7 @@ export interface Producto {
   precio: number;
   categoria: string;
   imagen: string;
-  activo?: boolean;
+  hidden?: boolean;
 }
 
 interface ShopConfigData {
@@ -56,7 +56,7 @@ export const productosPorDefecto: Producto[] = [
     precio: 1800,
     categoria: "pizzas",
     imagen: "https://images.unsplash.com/photo-1513104890138-7c749659a591?auto=format&fit=crop&w=500&q=80",
-    activo: true,
+    hidden: false,
   },
   {
     id: "prod_2",
@@ -65,7 +65,7 @@ export const productosPorDefecto: Producto[] = [
     precio: 700,
     categoria: "bebidas",
     imagen: "https://images.unsplash.com/photo-1621506289937-a8e4df240d0b?auto=format&fit=crop&w=500&q=80",
-    activo: true,
+    hidden: false,
   },
 ];
 
@@ -182,9 +182,11 @@ export const guardarProductosEnFirebase = async (
   categorias: string[],
 ): Promise<boolean> => {
   try {
+    // To ensure the collection `productos` is the single source of truth,
+    // avoid writing the full products array into the shop/config document.
+    // Persist only meta (infoLocal and categorias) in the config doc.
     return await saveShopConfigData({
       infoLocal,
-      productos: nuevosProductos,
       categorias,
     });
   } catch (error) {
