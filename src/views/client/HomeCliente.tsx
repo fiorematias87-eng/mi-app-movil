@@ -1,20 +1,26 @@
 // src/views/client/HomeCliente.tsx
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'firebase/auth';
-import { doc, updateDoc, setDoc, type DocumentData } from 'firebase/firestore';
+import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { auth, db, storage } from '../../firebase';
+import { saveShopConfigData, type InfoLocal, type Producto } from '../../firebase/db';
 import {
-  type InfoLocal,
-  type Producto,
-} from '../../firebase/db';
-import {
-  ShoppingBag, ShoppingCart, MessageSquare, MapPin, Plus, Minus,
-  Trash2, Star, X, ExternalLink, Search, Lock,
+  ShoppingBag,
+  ShoppingCart,
+  MessageSquare,
+  MapPin,
+  Plus,
+  Minus,
+  Trash2,
+  Star,
+  X,
+  ExternalLink,
+  Search,
+  Lock,
 } from 'lucide-react';
 import AdminPanel from '../../components/AdminPanel';
 
-// === ESTRUCTURAS DE DATOS VALIDADAS ===
 interface ItemDelCarrito {
   id: string;
   nombre: string;
@@ -36,8 +42,14 @@ export default function HomeCliente({
   const [infoLocal, setInfoLocal] = useState<Partial<InfoLocal> | null>(infoLocalProp);
   const [productos, setProductos] = useState<Producto[]>(productosProp);
   const [categorias, setCategorias] = useState<string[]>(categoriasProp);
-  const [contadorPedidos, setContadorPedidos] = useState<number>(() => Number(localStorage.getItem('local_pedidos_count') || '0'));
-  const [cajaAcumulada, setCajaAcumulada] = useState<number>(() => Number(localStorage.getItem('local_caja_acumulada') || '0'));
+  const [contadorPedidos, setContadorPedidos] = useState<number>(() => {
+    if (typeof window === 'undefined') return 0;
+    return Number(window.localStorage.getItem('local_pedidos_count') || '0');
+  });
+  const [cajaAcumulada, setCajaAcumulada] = useState<number>(() => {
+    if (typeof window === 'undefined') return 0;
+    return Number(window.localStorage.getItem('local_caja_acumulada') || '0');
+  });
   const [isAdminAutenticado, setIsAdminAutenticado] = useState(false);
   const [subiendoImagen, setSubiendoImagen] = useState(false);
   const [animarCarrito, setAnimarCarrito] = useState(false);
@@ -45,6 +57,32 @@ export default function HomeCliente({
   const [authError, setAuthError] = useState<string | null>(null);
   const [adminEmail, setAdminEmail] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
+  const [carrito, setCarrito] = useState<ItemDelCarrito[]>([]);
+  const [vistaActual, setVistaActual] = useState<'menu' | 'carrito' | 'admin'>('menu');
+  const [busqueda, setBusqueda] = useState('');
+  const [nombre, setNombre] = useState(() => {
+    if (typeof window === 'undefined') return '';
+    return window.localStorage.getItem('cliente_nombre') || '';
+  });
+  const [telefono, setTelefono] = useState(() => {
+    if (typeof window === 'undefined') return '';
+    return window.localStorage.getItem('cliente_telefono') || '';
+  });
+  const [direccion, setDireccion] = useState(() => {
+    if (typeof window === 'undefined') return '';
+    return window.localStorage.getItem('cliente_direccion') || '';
+  });
+  const [entreCalles, setEntreCalles] = useState(() => {
+    if (typeof window === 'undefined') return '';
+    return window.localStorage.getItem('cliente_entrecalles') || '';
+  });
+  const [gmapsLink, setGmapsLink] = useState(() => {
+    if (typeof window === 'undefined') return '';
+    return window.localStorage.getItem('cliente_gmaps') || '';
+  });
+  const [metodoPago, setMetodoPago] = useState<MetodoPago>('efectivo');
+  const [pagaCon, setPagaCon] = useState<string>('');
+  const [categoriaActiva, setCategoriaActiva] = useState<string>(categoriasProp[0] ?? 'pizzas');
 
   const infoLocalValues: InfoLocal = {
     nombre: infoLocal?.nombre ?? '',
@@ -71,6 +109,12 @@ export default function HomeCliente({
   }, [productosProp, infoLocalProp, categoriasProp]);
 
   useEffect(() => {
+    if (categorias.length > 0 && !categorias.includes(categoriaActiva)) {
+      setCategoriaActiva(categorias[0]);
+    }
+  }, [categorias, categoriaActiva]);
+
+  useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setIsAdminAutenticado(Boolean(user));
     });
@@ -78,39 +122,63 @@ export default function HomeCliente({
     return unsubscribe;
   }, []);
 
-  // === ESTADOS DE NAVEGACIÓN, BUSCADOR Y CARRITO ===
-  const [carrito, setCarrito] = useState<ItemDelCarrito[]>([]);
-  const [vistaActual, setVistaActual] = useState<'menu' | 'carrito' | 'admin'>('menu');
-  const [busqueda, setBusqueda] = useState('');
+  useEffect(() => {
+    const docRef = doc(db, 'shop', 'config');
+    const unsubscribe = onSnapshot(
+      docRef,
+      (snapshot) => {
+        if (!snapshot.exists()) return;
+        const data = snapshot.data() as Partial<{ infoLocal: InfoLocal; productos: Producto[]; categorias: string[] }> | undefined;
+        if (data?.infoLocal) setInfoLocal(data.infoLocal as Partial<InfoLocal>);
+        if (Array.isArray(data?.productos)) setProductos(data.productos as Producto[]);
+        if (Array.isArray(data?.categorias)) setCategorias(data.categorias as string[]);
+      },
+      (error) => {
+        console.error('Error al escuchar cambios en Firestore:', error);
+      },
+    );
 
-  // Formulario del cliente
-  const [nombre, setNombre] = useState(() => localStorage.getItem('cliente_nombre') || '');
-  const [telefono, setTelefono] = useState(() => localStorage.getItem('cliente_telefono') || '');
-  const [direccion, setDireccion] = useState(() => localStorage.getItem('cliente_direccion') || '');
-  const [entreCalles, setEntreCalles] = useState(() => localStorage.getItem('cliente_entrecalles') || '');
-  const [gmapsLink, setGmapsLink] = useState(() => localStorage.getItem('cliente_gmaps') || '');
+    return () => unsubscribe();
+  }, []);
 
-  const [metodoPago, setMetodoPago] = useState<MetodoPago>('efectivo');
-  const [pagaCon, setPagaCon] = useState<string>('');
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem('cliente_nombre', nombre);
+    }
+  }, [nombre]);
 
-  useEffect(() => { localStorage.setItem('cliente_nombre', nombre); }, [nombre]);
-  useEffect(() => { localStorage.setItem('cliente_telefono', telefono); }, [telefono]);
-  useEffect(() => { localStorage.setItem('cliente_direccion', direccion); }, [direccion]);
-  useEffect(() => { localStorage.setItem('cliente_entrecalles', entreCalles); }, [entreCalles]);
-  useEffect(() => { localStorage.setItem('cliente_gmaps', gmapsLink); }, [gmapsLink]);
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem('cliente_telefono', telefono);
+    }
+  }, [telefono]);
 
-  // === ESTADOS PARA ACORDEONES DEL ADMIN ===
-  const [categoriaActiva, setCategoriaActiva] = useState(categorias[0] || 'pizzas');
-  // === REPRODUCCIÓN DE AUDIO ASINCRÓNICO EVITANDO FILTROS ===
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem('cliente_direccion', direccion);
+    }
+  }, [direccion]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem('cliente_entrecalles', entreCalles);
+    }
+  }, [entreCalles]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem('cliente_gmaps', gmapsLink);
+    }
+  }, [gmapsLink]);
+
   const reproducirSonidoExito = () => {
-    const audio = new Audio("https://assets.mixkit.co/active_storage/sfx/2568/2568-84.wav");
+    const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2568/2568-84.wav');
     audio.volume = 0.3;
     audio.play().catch(() => {
-      console.log("Audio bloqueado por el navegador del cliente hasta la primera interacción.");
+      console.log('Audio bloqueado por el navegador del cliente hasta la primera interacción.');
     });
   };
 
-  // === MANEJADOR DE IMÁGENES ===
   const handleFileChange = async (
     e: React.ChangeEvent<HTMLInputElement>,
     tipo: 'portada' | 'avatar' | 'producto',
@@ -146,17 +214,15 @@ export default function HomeCliente({
         return urlNube;
       }
 
-      const campoFirestore = tipo === 'portada' ? 'infoLocal.portadaUrl' : 'infoLocal.avatarUrl';
-      const docRef = doc(db, 'shop', 'config');
-
+      const campo = tipo === 'portada' ? 'portadaUrl' : 'avatarUrl';
+      const nuevaInfoLocal = { ...(infoLocal ?? {}), [campo]: urlNube };
+      setInfoLocal(nuevaInfoLocal);
       try {
-        await updateDoc(docRef, { [campoFirestore]: urlNube } as Partial<DocumentData>);
-      } catch (error) {
-        console.warn('No se pudo usar updateDoc, guardando con setDoc merge:', error);
-        await setDoc(docRef, { infoLocal: { [tipo === 'portada' ? 'portadaUrl' : 'avatarUrl']: urlNube } }, { merge: true });
+        await saveShopConfigData({ infoLocal: nuevaInfoLocal, categorias, productos });
+      } catch (err) {
+        console.error('Error guardando infoLocal en Firestore:', err);
       }
 
-      setInfoLocal((prev) => ({ ...(prev ?? {}), [tipo === 'portada' ? 'portadaUrl' : 'avatarUrl']: urlNube }));
       return urlNube;
     } catch (error) {
       console.error(error);
@@ -165,77 +231,6 @@ export default function HomeCliente({
     } finally {
       setSubiendoImagen(false);
     }
-  };
-
-  const agregarAlCarrito = (producto: Producto) => {
-    reproducirSonidoExito();
-    setAnimarCarrito(true);
-    setTimeout(() => setAnimarCarrito(false), 300);
-
-    setCarrito(prev => {
-      const existe = prev.find(item => item.id === producto.id);
-      if (existe) return prev.map(item => item.id === producto.id ? { ...item, cantidad: item.cantidad + 1 } : item);
-      return [...prev, { id: producto.id, nombre: producto.nombre, precio: producto.precio, cantidad: 1 }];
-    });
-  };
-
-  const modificarCantidad = (id: string, accion: 'sumar' | 'restar') => {
-    if (accion === 'sumar') reproducirSonidoExito();
-    setCarrito(prev => prev.map(item => {
-      if (item.id === id) {
-        const nuevaCantidad = accion === 'sumar' ? item.cantidad + 1 : item.cantidad - 1;
-        return nuevaCantidad > 0 ? { ...item, cantidad: nuevaCantidad } : item;
-      }
-      return item;
-    }).filter(item => item.cantidad > 0));
-  };
-
-  const vaciarCarrito = () => {
-    if (window.confirm("¿Vaciar carrito?")) setCarrito([]);
-  };
-
-  const abrirGoogleMapsExterno = () => {
-    window.open("https://www.google.com/maps", "_blank");
-    alert("📍 Te redirigimos a Google Maps:\n\n1. Buscá tu casa o ubicación exacta.\n2. Tocá el botón 'Compartir'.\n3. Elegí 'Copiar enlace'.\n4. Regresá acá y pegalo en el cuadro de abajo.");
-  };
-
-  const enviarPedidoWhatsApp = (e: React.FormEvent) => {
-    e.preventDefault();
-      if (!nombre || !telefono || !direccion || !entreCalles || perfilVacio) return;
-
-      const subtotal = carrito.reduce((acc, item) => acc + (item.precio * item.cantidad), 0);
-      const totalFinal = subtotal + infoLocalValues.costoEnvio;
-
-      let mensaje = `⭐️ *NUEVO PEDIDO - ${infoLocalValues.nombre.toUpperCase()}* ⭐️\n\n`;
-    if (gmapsLink.trim() !== "") {
-      mensaje += `📌 *UBICACIÓN GOOGLE MAPS REPARTIDOR:*\n${gmapsLink.trim()}\n`;
-    }
-    
-    mensaje += `\n🛒 *Detalle:*\n`;
-    carrito.forEach(item => { mensaje += `• ${item.cantidad}x ${item.nombre} ($${(item.precio * item.cantidad).toLocaleString('es-AR')})\n`; });
-mensaje += `\n💵 *Subtotal:* $${subtotal.toLocaleString('es-AR')}\n🛵 *Envío:* $${infoLocalValues.costoEnvio.toLocaleString('es-AR')}\n💰 *TOTAL:* $${totalFinal.toLocaleString('es-AR')}\n\n`;
-      mensaje += `💳 *Método de Pago:* ${metodoPago === 'efectivo' ? 'Efectivo Cash 💵' : 'Transferencia Bancaria/Virtual 📱'}\n`;
-      
-      if (metodoPago === 'efectivo') {
-        const m = Number(pagaCon);
-        mensaje += m && m > totalFinal ? `💸 *Paga con:* $${m}\n🪙 *Vuelto:* $${m - totalFinal}\n` : `💸 *Paga con:* Importe exacto\n`;
-      } else {
-        mensaje += `🏛 *CVU:* ${infoLocalValues.cbuCvu}\n🔑 *Alias:* ${infoLocalValues.alias}\n_Por favor, envíe el comprobante._\n`;
-      }
-
-      const nP = contadorPedidos + 1;
-      const nC = cajaAcumulada + totalFinal;
-      setContadorPedidos(nP); setCajaAcumulada(nC);
-      localStorage.setItem('local_pedidos_count', nP.toString());
-      localStorage.setItem('local_caja_acumulada', nC.toString());
-
-      window.open(`https://wa.me/${infoLocalValues.telefonoWhatsApp}?text=${encodeURIComponent(mensaje)}`, '_blank');
-  };
-
-  const ejecutarCierreCaja = () => {
-    alert(`📢 Turno Cerrado\n\nPedidos: ${contadorPedidos}\nRecaudado: $${cajaAcumulada.toLocaleString('es-AR')}`);
-    setContadorPedidos(0); setCajaAcumulada(0);
-    localStorage.setItem('local_pedidos_count', "0"); localStorage.setItem('local_caja_acumulada', "0");
   };
 
   const iniciarSesionAdmin = async (e: React.FormEvent) => {
@@ -276,15 +271,112 @@ mensaje += `\n💵 *Subtotal:* $${subtotal.toLocaleString('es-AR')}\n🛵 *Enví
     }
   };
 
-  const cantidadTotalProductos = carrito.reduce((acc, item) => acc + item.cantidad, 0);
-  const subtotalCarrito = carrito.reduce((acc, item) => acc + (item.precio * item.cantidad), 0);
+  const agregarAlCarrito = (producto: Producto) => {
+    setCarrito((prev) => {
+      const existente = prev.find((item) => item.id === producto.id);
+      if (existente) {
+        return prev.map((item) => (item.id === producto.id ? { ...item, cantidad: item.cantidad + 1 } : item));
+      }
 
-  const productosFiltradosCliente = productos.filter(p => {
+      return [...prev, {
+        id: producto.id,
+        nombre: producto.nombre,
+        precio: producto.precio,
+        cantidad: 1,
+      }];
+    });
+
+    setAnimarCarrito(true);
+    window.setTimeout(() => setAnimarCarrito(false), 350);
+    reproducirSonidoExito();
+  };
+
+  const modificarCantidad = (id: string, accion: 'sumar' | 'restar') => {
+    setCarrito((prev) => prev.flatMap((item) => {
+      if (item.id !== id) return [item];
+      if (accion === 'sumar') return [{ ...item, cantidad: item.cantidad + 1 }];
+      if (item.cantidad <= 1) return [];
+      return [{ ...item, cantidad: item.cantidad - 1 }];
+    }));
+  };
+
+  const vaciarCarrito = () => {
+    setCarrito([]);
+    setVistaActual('menu');
+  };
+
+  const abrirGoogleMapsExterno = () => {
+    const query = (gmapsLink || `${direccion} ${entreCalles}`.trim() || infoLocalValues.direccion).trim();
+    const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
+  const ejecutarCierreCaja = () => {
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem('local_pedidos_count', '0');
+      window.localStorage.setItem('local_caja_acumulada', '0');
+    }
+    setContadorPedidos(0);
+    setCajaAcumulada(0);
+  };
+
+  const enviarPedidoWhatsApp = (e: React.FormEvent) => {
+    e.preventDefault();
+
+    const itemsTexto = carrito.map((item) => `• ${item.nombre} x${item.cantidad}`).join('\n');
+    const total = subtotalCarrito + infoLocalValues.costoEnvio;
+    const mensaje = [
+      `Hola ${infoLocalValues.nombre || 'local'} 👋`,
+      '',
+      'Nuevo pedido:',
+      itemsTexto,
+      '',
+      `Cliente: ${nombre}`,
+      `Teléfono: ${telefono}`,
+      `Dirección: ${direccion}`,
+      `Entre calles: ${entreCalles}`,
+      `Pago: ${metodoPago === 'efectivo' ? `Efectivo${pagaCon ? ` - Paga con ${pagaCon}` : ''}` : 'Transferencia'}`,
+      `Total: $${total.toLocaleString('es-AR')}`,
+      '',
+      gmapsLink ? `Link ubicación: ${gmapsLink}` : '',
+    ].filter(Boolean).join('\n');
+
+    const telefonoDestino = infoLocalValues.telefonoWhatsApp?.replace(/\D/g, '');
+    if (telefonoDestino) {
+      const url = `https://wa.me/${telefonoDestino}?text=${encodeURIComponent(mensaje)}`;
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
+
+    setCarrito([]);
+    setVistaActual('menu');
+    setPagaCon('');
+
+    setContadorPedidos((prev) => {
+      const siguiente = prev + 1;
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem('local_pedidos_count', String(siguiente));
+      }
+      return siguiente;
+    });
+
+    setCajaAcumulada((prev) => {
+      const siguiente = prev + total;
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem('local_caja_acumulada', String(siguiente));
+      }
+      return siguiente;
+    });
+  };
+
+  const cantidadTotalProductos = carrito.reduce((acc: number, item: ItemDelCarrito) => acc + item.cantidad, 0);
+  const subtotalCarrito = carrito.reduce((acc: number, item: ItemDelCarrito) => acc + item.precio * item.cantidad, 0);
+
+  const productosFiltradosCliente = productos.filter((p: Producto) => {
     const estaActivo = !(p.hidden === true);
     const coincideCategoria = p.categoria === categoriaActiva;
-    const coincideBusqueda = p.nombre.toLowerCase().includes(busqueda.toLowerCase()) || 
-                             p.descripcion.toLowerCase().includes(busqueda.toLowerCase());
-    return busqueda.trim() !== "" ? (estaActivo && coincideBusqueda) : (estaActivo && coincideCategoria && coincideBusqueda);
+    const coincideBusqueda = p.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
+      p.descripcion.toLowerCase().includes(busqueda.toLowerCase());
+    return busqueda.trim() !== '' ? (estaActivo && coincideBusqueda) : (estaActivo && coincideCategoria && coincideBusqueda);
   });
 
   return (
@@ -295,14 +387,13 @@ mensaje += `\n💵 *Subtotal:* $${subtotal.toLocaleString('es-AR')}\n🛵 *Enví
         </div>
       )}
 
-      {/* BOTÓN FLOTANTE CARRITO CON REBOTE Y CAMBIO DE COLOR */}
       {vistaActual === 'menu' && cantidadTotalProductos > 0 && (
         <div className="fixed bottom-20 left-1/2 -translate-x-1/2 w-full max-w-sm px-4 z-40">
-          <button 
+          <button
             onClick={() => setVistaActual('carrito')}
             className={`w-full text-neutral-950 font-black py-3 px-4 rounded-2xl flex items-center justify-between shadow-xl transition-transform duration-100 ease-in-out active:scale-95 active:opacity-90 ${
-              animarCarrito 
-                ? 'scale-110 bg-gradient-to-r from-emerald-400 to-teal-500' 
+              animarCarrito
+                ? 'scale-110 bg-gradient-to-r from-emerald-400 to-teal-500'
                 : 'scale-100 bg-gradient-to-r from-yellow-400 via-amber-500 to-yellow-500 hover:opacity-90'
             }`}
           >
@@ -318,7 +409,6 @@ mensaje += `\n💵 *Subtotal:* $${subtotal.toLocaleString('es-AR')}\n🛵 *Enví
         </div>
       )}
 
-      {/* VISTA 1: MENÚ DEL CLIENTE */}
       {vistaActual === 'menu' && (
         <>
           <div className="h-44 bg-cover bg-center relative" style={infoLocalValues.portadaUrl ? { backgroundImage: `url(${infoLocalValues.portadaUrl})` } : undefined}>
@@ -344,7 +434,7 @@ mensaje += `\n💵 *Subtotal:* $${subtotal.toLocaleString('es-AR')}\n🛵 *Enví
             </div>
             <h1 className="text-3xl font-black mt-1 text-transparent bg-clip-text bg-gradient-to-r from-sky-400 via-white to-sky-400 tracking-tight">{infoLocalValues.nombre || 'Nombre no definido'}</h1>
             <p className="text-xs text-neutral-400 font-medium px-4 mt-1">{infoLocalValues.descripcion || 'Descripción no configurada.'}</p>
-            
+
             <div className="flex gap-4 mt-3 text-neutral-400">
               {infoLocalValues.instagram && <a href={`https://instagram.com/${infoLocalValues.instagram.replace('@', '')}`} target="_blank" rel="noreferrer" className="text-xs bg-neutral-800 px-2.5 py-1 rounded-full border border-neutral-700/50">📸 Insta</a>}
               {infoLocalValues.facebook && <a href={`https://facebook.com/${infoLocalValues.facebook.replace('@', '')}`} target="_blank" rel="noreferrer" className="text-xs bg-neutral-800 px-2.5 py-1 rounded-full border border-neutral-700/50">🔵 Face</a>}
@@ -355,18 +445,18 @@ mensaje += `\n💵 *Subtotal:* $${subtotal.toLocaleString('es-AR')}\n🛵 *Enví
           <div className="px-4 py-2">
             <div className="relative">
               <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-500" />
-              <input 
-                type="text" 
-                placeholder="¿Qué estás buscando? Escribí acá..." 
+              <input
+                type="text"
+                placeholder="¿Qué estás buscando? Escribí acá..."
                 value={busqueda}
-                onChange={e => setBusqueda(e.target.value)}
+                onChange={(e) => setBusqueda(e.target.value)}
                 className="w-full bg-neutral-800/90 border border-neutral-750 rounded-xl py-2.5 pl-10 pr-8 text-xs text-white focus:outline-none focus:border-sky-400 transition-colors placeholder-neutral-500"
               />
               {busqueda && <X size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 cursor-pointer" onClick={() => setBusqueda('')} />}
             </div>
           </div>
 
-          {busqueda.trim() === "" && (
+          {busqueda.trim() === '' && (
             <div className="flex gap-2 overflow-x-auto px-4 py-2 sticky top-0 bg-neutral-900/90 backdrop-blur-md z-10 scrollbar-none">
               {categorias.map((cat) => (
                 <button key={cat} onClick={() => setCategoriaActiva(cat)} className={`px-5 py-2.5 rounded-full capitalize font-black text-xs tracking-wider transition-transform duration-100 ease-in-out active:scale-95 active:opacity-90 ${categoriaActiva === cat ? 'bg-gradient-to-r from-sky-400 to-sky-500 text-neutral-950 shadow-md hover:shadow-lg' : 'bg-neutral-800 text-neutral-400 hover:opacity-90'}`}>
@@ -398,7 +488,6 @@ mensaje += `\n💵 *Subtotal:* $${subtotal.toLocaleString('es-AR')}\n🛵 *Enví
         </>
       )}
 
-      {/* VISTA 2: CARRITO CON SECCIÓN DE GOOGLE MAPS INTUITIVA */}
       {vistaActual === 'carrito' && (
         <div className="p-4">
           <div className="flex justify-between items-center mb-6">
@@ -416,7 +505,7 @@ mensaje += `\n💵 *Subtotal:* $${subtotal.toLocaleString('es-AR')}\n🛵 *Enví
           ) : (
             <form onSubmit={enviarPedidoWhatsApp} className="space-y-5">
               <div className="bg-neutral-800/60 p-4 rounded-2xl space-y-4 border border-neutral-700/30">
-                {carrito.map(item => (
+                {carrito.map((item) => (
                   <div key={item.id} className="flex items-center justify-between border-b border-neutral-700/30 pb-3 last:border-0 last:pb-0">
                     <div className="flex-1"><h4 className="font-bold text-white text-sm">{item.nombre}</h4><p className="text-xs text-neutral-400">${item.precio.toLocaleString('es-AR')} c/u</p></div>
                     <div className="flex items-center gap-2">
@@ -428,7 +517,6 @@ mensaje += `\n💵 *Subtotal:* $${subtotal.toLocaleString('es-AR')}\n🛵 *Enví
                 ))}
               </div>
 
-              {/* SECTOR DATOS ENTREGA - REESTRUCTURADO PAUTAS GPS Y MAPS */}
               <div className="bg-neutral-800/60 p-4 rounded-2xl space-y-3 border border-neutral-700/30">
                 <div className="flex justify-between items-center mb-1">
                   <h3 className="text-xs font-black tracking-widest text-sky-400 uppercase">Datos de Entrega</h3>
@@ -436,20 +524,20 @@ mensaje += `\n💵 *Subtotal:* $${subtotal.toLocaleString('es-AR')}\n🛵 *Enví
                     🗺️ Abrir Google Maps <ExternalLink size={11} />
                   </button>
                 </div>
-                
-                <input type="text" placeholder="Nombre y Apellido" value={nombre} onChange={e=>setNombre(e.target.value)} className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-3 px-4 text-sm text-white focus:border-sky-400 focus:outline-none" required />
-                <input type="tel" placeholder="Teléfono de contacto" value={telefono} onChange={e=>setTelefono(e.target.value)} className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-3 px-4 text-sm text-white focus:border-sky-400 focus:outline-none" required />
-                <input type="text" placeholder="Calle y Número (Ej: Av Belgrano 450)" value={direccion} onChange={e=>setDireccion(e.target.value)} className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-3 px-4 text-sm text-white focus:border-sky-400 focus:outline-none" required />
-                <input type="text" placeholder="¿Entre qué calles o indicaciones de fachada?" value={entreCalles} onChange={e=>setEntreCalles(e.target.value)} className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-3 px-4 text-sm text-white focus:border-sky-400 focus:outline-none" required />
-                
+
+                <input type="text" placeholder="Nombre y Apellido" value={nombre} onChange={(e) => setNombre(e.target.value)} className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-3 px-4 text-sm text-white focus:border-sky-400 focus:outline-none" required />
+                <input type="tel" placeholder="Teléfono de contacto" value={telefono} onChange={(e) => setTelefono(e.target.value)} className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-3 px-4 text-sm text-white focus:border-sky-400 focus:outline-none" required />
+                <input type="text" placeholder="Calle y Número (Ej: Av Belgrano 450)" value={direccion} onChange={(e) => setDireccion(e.target.value)} className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-3 px-4 text-sm text-white focus:border-sky-400 focus:outline-none" required />
+                <input type="text" placeholder="¿Entre qué calles o indicaciones de fachada?" value={entreCalles} onChange={(e) => setEntreCalles(e.target.value)} className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-3 px-4 text-sm text-white focus:border-sky-400 focus:outline-none" required />
+
                 <div className="pt-2 border-t border-neutral-700/40">
                   <label className="text-[10px] text-yellow-400 font-bold block mb-1">¿Pegaste el link de tu ubicación aquí abajo?</label>
-                  <input 
-                    type="text" 
-                    placeholder="Mantené apretado acá y elegí 'Pegar'..." 
-                    value={gmapsLink} 
-                    onChange={e=>setGmapsLink(e.target.value)} 
-                    className="w-full bg-neutral-950 border border-neutral-800 rounded-xl py-2.5 px-3 text-xs text-sky-400 placeholder-neutral-600 focus:outline-none focus:border-sky-500" 
+                  <input
+                    type="text"
+                    placeholder="Mantené apretado acá y elegí 'Pegar'..."
+                    value={gmapsLink}
+                    onChange={(e) => setGmapsLink(e.target.value)}
+                    className="w-full bg-neutral-950 border border-neutral-800 rounded-xl py-2.5 px-3 text-xs text-sky-400 placeholder-neutral-600 focus:outline-none focus:border-sky-500"
                   />
                   <p className="text-[9px] text-neutral-500 mt-1">Sirve para que el delivery llegue sin perderse usando el GPS.</p>
                 </div>
@@ -462,7 +550,7 @@ mensaje += `\n💵 *Subtotal:* $${subtotal.toLocaleString('es-AR')}\n🛵 *Enví
                   <button type="button" onClick={() => setMetodoPago('transferencia')} className={`py-3 px-4 rounded-xl border font-bold text-xs uppercase transition-transform duration-100 ease-in-out active:scale-95 active:opacity-90 ${metodoPago === 'transferencia' ? 'bg-sky-950/40 border-sky-400 text-sky-400' : 'bg-neutral-900/60 border-neutral-700 text-neutral-400 hover:bg-neutral-800/80'}`}>📱 Transferencia</button>
                 </div>
                 {metodoPago === 'efectivo' ? (
-                  <input type="number" placeholder="¿Con cuánto vas a pagar? (Para vuelto)" value={pagaCon} onChange={e=>setPagaCon(e.target.value)} className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-2.5 px-4 text-sm text-white" />
+                  <input type="number" placeholder="¿Con cuánto vas a pagar? (Para vuelto)" value={pagaCon} onChange={(e) => setPagaCon(e.target.value)} className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-2.5 px-4 text-sm text-white" />
                 ) : (
                   <div className="bg-neutral-900/80 p-3 rounded-xl text-xs text-neutral-300">
                     <p className="font-bold text-yellow-500">Datos de transferencia:</p>
@@ -482,7 +570,6 @@ mensaje += `\n💵 *Subtotal:* $${subtotal.toLocaleString('es-AR')}\n🛵 *Enví
         </div>
       )}
 
-      {/* VISTA 3: PANEL ADMINISTRADOR */}
       {vistaActual === 'admin' && (
         !isAdminAutenticado ? (
           <div className="p-4">
@@ -520,7 +607,6 @@ mensaje += `\n💵 *Subtotal:* $${subtotal.toLocaleString('es-AR')}\n🛵 *Enví
         )
       )}
 
-      {/* NAV INFERIOR */}
       <div className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-neutral-900/95 backdrop-blur-md border-t border-neutral-800 flex justify-around items-center py-3 rounded-t-2xl z-30">
         <button onClick={() => setVistaActual('menu')} className={`flex flex-col items-center transition-transform duration-100 ease-in-out active:scale-95 active:opacity-90 ${vistaActual === 'menu' ? 'text-sky-400 font-bold' : 'text-neutral-500 hover:text-sky-400'}`}>
           <ShoppingBag size={20} /><span className="text-[10px] mt-1">Menú</span>
@@ -536,7 +622,6 @@ mensaje += `\n💵 *Subtotal:* $${subtotal.toLocaleString('es-AR')}\n🛵 *Enví
           <span className="text-[10px] hidden">Admin</span>
         </button>
       </div>
-
     </div>
   );
 }

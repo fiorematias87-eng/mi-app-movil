@@ -276,9 +276,14 @@ export default function AdminPanel({
   const infoLocalValues: Partial<InfoLocal> = infoLocal ?? {};
 
   const handleInfoLocalChange = async (campo: keyof InfoLocal, valor: string | number) => {
-    const actualizada = { ...infoLocalValues, [campo]: valor };
-    await saveShopConfigData({ infoLocal: actualizada, categorias });
+    const actualizada = { ...(infoLocal ?? {}), [campo]: valor };
     setInfoLocal(actualizada);
+    try {
+      // Enviar productos y categorias para evitar sobrescribir con arrays vacíos
+      await saveShopConfigData({ infoLocal: actualizada, categorias, productos });
+    } catch (err) {
+      console.error('Error guardando infoLocal:', err);
+    }
   };
 
   const handleProductoImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {

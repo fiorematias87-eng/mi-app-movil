@@ -31,7 +31,6 @@ interface ShopConfigData {
   categorias: string[];
 }
 
-const STORAGE_KEY = "mi_app_movil_shop_data";
 const CONFIG_DOC = doc(db, "shop", "config");
 
 export const infoLocalPorDefecto: InfoLocal = {
@@ -70,6 +69,7 @@ export const productosPorDefecto: Producto[] = [
 ];
 
 export const categoriesPorDefecto: string[] = ["pizzas", "bebidas", "postres"];
+const STORAGE_KEY = "mi_app_shop_config_v1";
 
 const leerDatosLocales = (): ShopConfigData => {
   if (typeof window === "undefined") {
@@ -111,40 +111,31 @@ const guardarDatosLocales = (data: ShopConfigData) => {
   }
 };
 
-const normalizarDatos = (data: Partial<ShopConfigData> | null | undefined): ShopConfigData => {
-  return {
-    infoLocal: data?.infoLocal ?? null,
-    productos: Array.isArray(data?.productos) ? data.productos : [],
-    categorias: Array.isArray(data?.categorias) ? data.categorias : [],
-  };
-};
+const normalizarDatos = (data: Partial<ShopConfigData> | null | undefined): ShopConfigData => ({
+  infoLocal: { ...infoLocalPorDefecto, ...(data?.infoLocal ?? {}) },
+  productos: Array.isArray(data?.productos) ? data!.productos : productosPorDefecto,
+  categorias: Array.isArray(data?.categorias) ? data!.categorias : categoriesPorDefecto,
+});
 
 export const getShopConfigData = async (): Promise<ShopConfigData> => {
-  if (typeof window === "undefined") {
-    return {
-      infoLocal: null,
-      productos: [],
-      categorias: [],
-    };
-  }
-
   try {
     const snapshot = await getDoc(CONFIG_DOC);
     if (snapshot.exists()) {
-      const data = normalizarDatos(snapshot.data() as Partial<ShopConfigData> | undefined);
-      guardarDatosLocales(data);
-      return data;
+      return normalizarDatos(snapshot.data() as Partial<ShopConfigData> | undefined);
     }
 
-    return {
-      infoLocal: null,
-      productos: [],
-      categorias: [],
-    };
+    // No existe documento: devolver valores por defecto normalizados
+    return normalizarDatos(undefined);
   } catch (error) {
     console.warn("No se pudo leer Firestore, usando almacenamiento local:", error);
     const fallback = leerDatosLocales();
-    return fallback;
+    if (fallback && (fallback.productos.length || fallback.categorias.length || fallback.infoLocal)) return fallback;
+    // Si no hay datos locales, devolver valores por defecto
+    return {
+      infoLocal: infoLocalPorDefecto,
+      productos: productosPorDefecto,
+      categorias: categoriesPorDefecto,
+    };
   }
 };
 
@@ -169,6 +160,18 @@ export const saveShopConfigData = async (
 
   try {
     await setDoc(CONFIG_DOC, data, { merge: true });
+    // también sincronizar con almacenamiento local
+    try {
+      const current = await getShopConfigData();
+      const merged: ShopConfigData = normalizarDatos({
+        infoLocal: data.infoLocal ?? current.infoLocal ?? undefined,
+        productos: data.productos ?? current.productos ?? undefined,
+        categorias: data.categorias ?? current.categorias ?? undefined,
+      });
+      guardarDatosLocales(merged);
+    } catch {
+      // noop
+    }
     return true;
   } catch (error) {
     console.error("No se pudo guardar en Firestore:", error);
@@ -201,27 +204,30 @@ export const verificarSuscripcion = async (): Promise<boolean> => {
 
 export const suscribirProductos = (callback: (data: ShopConfigData) => void) => {
   if (typeof window === "undefined") {
-    callback(leerDatosLocales());
+    callback({
+      infoLocal: infoLocalPorDefecto,
+      productos: productosPorDefecto,
+      categorias: categoriesPorDefecto,
+    });
     return () => undefined;
   }
-
-  const emitir = () => {
-    const data = leerDatosLocales();
-    callback(data);
-  };
-
-  emitir();
 
   try {
     return onSnapshot(CONFIG_DOC, (snapshot) => {
       if (snapshot.exists()) {
         const data = normalizarDatos(snapshot.data() as Partial<ShopConfigData> | undefined);
-        guardarDatosLocales(data);
         callback(data);
+        return;
       }
+
+      callback({
+        infoLocal: infoLocalPorDefecto,
+        productos: productosPorDefecto,
+        categorias: categoriesPorDefecto,
+      });
     });
   } catch (error) {
-    console.warn("No se pudo suscribir a Firestore, usando almacenamiento local:", error);
+    console.warn("No se pudo suscribir a Firestore:", error);
     return () => undefined;
   }
 };
