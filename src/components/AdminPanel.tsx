@@ -25,8 +25,8 @@ import {
 } from '../firebase/db';
 
 interface AdminPanelProps {
-  infoLocal: InfoLocal;
-  setInfoLocal: React.Dispatch<React.SetStateAction<InfoLocal>>;
+  infoLocal: Partial<InfoLocal> | null;
+  setInfoLocal: React.Dispatch<React.SetStateAction<Partial<InfoLocal> | null>>;
   productos: Producto[];
   setProductos: React.Dispatch<React.SetStateAction<Producto[]>>;
   categorias: string[];
@@ -232,8 +232,10 @@ export default function AdminPanel({
     }
   };
 
+  const infoLocalValues: Partial<InfoLocal> = infoLocal ?? {};
+
   const handleInfoLocalChange = async (campo: keyof InfoLocal, valor: string | number) => {
-    const actualizada = { ...infoLocal, [campo]: valor };
+    const actualizada = { ...infoLocalValues, [campo]: valor };
     setInfoLocal(actualizada);
     await saveShopConfigData({ infoLocal: actualizada, categorias });
   };
@@ -290,11 +292,11 @@ export default function AdminPanel({
         </button>
         {seccionAdminAbierta === 'datos' && (
           <div className="p-4 pt-3 space-y-3 border-t border-neutral-800/50">
-            <input type="text" placeholder="Nombre del Local" value={infoLocal.nombre} onChange={(e) => void handleInfoLocalChange('nombre', e.target.value)} className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-2.5 px-3 text-xs text-white" disabled={suscripcionActiva === false} />
-            <textarea placeholder="Descripción / Slogan" value={infoLocal.descripcion} onChange={(e) => void handleInfoLocalChange('descripcion', e.target.value)} className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-2.5 px-3 text-xs h-16 text-white" disabled={suscripcionActiva === false} />
-            <input type="text" placeholder="Dirección Comercial" value={infoLocal.direccion} onChange={(e) => void handleInfoLocalChange('direccion', e.target.value)} className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-2.5 px-3 text-xs text-white" disabled={suscripcionActiva === false} />
-            <input type="text" placeholder="WhatsApp (Con código de área, ej: 549...)" value={infoLocal.telefonoWhatsApp} onChange={(e) => void handleInfoLocalChange('telefonoWhatsApp', e.target.value)} className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-2.5 px-3 text-xs text-white" disabled={suscripcionActiva === false} />
-            <input type="number" placeholder="Costo de Envío Fijo ($)" value={infoLocal.costoEnvio || ''} onChange={(e) => void handleInfoLocalChange('costoEnvio', Number(e.target.value))} className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-2.5 px-3 text-xs text-white" disabled={suscripcionActiva === false} />
+            <input type="text" placeholder="Nombre del Local" value={infoLocalValues.nombre ?? ''} onChange={(e) => void handleInfoLocalChange('nombre', e.target.value)} className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-2.5 px-3 text-xs text-white" disabled={suscripcionActiva === false} />
+            <textarea placeholder="Descripción / Slogan" value={infoLocalValues.descripcion ?? ''} onChange={(e) => void handleInfoLocalChange('descripcion', e.target.value)} className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-2.5 px-3 text-xs h-16 text-white" disabled={suscripcionActiva === false} />
+            <input type="text" placeholder="Dirección Comercial" value={infoLocalValues.direccion ?? ''} onChange={(e) => void handleInfoLocalChange('direccion', e.target.value)} className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-2.5 px-3 text-xs text-white" disabled={suscripcionActiva === false} />
+            <input type="text" placeholder="WhatsApp (Con código de área, ej: 549...)" value={infoLocalValues.telefonoWhatsApp ?? ''} onChange={(e) => void handleInfoLocalChange('telefonoWhatsApp', e.target.value)} className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-2.5 px-3 text-xs text-white" disabled={suscripcionActiva === false} />
+            <input type="number" placeholder="Costo de Envío Fijo ($)" value={infoLocalValues.costoEnvio ?? ''} onChange={(e) => void handleInfoLocalChange('costoEnvio', Number(e.target.value))} className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-2.5 px-3 text-xs text-white" disabled={suscripcionActiva === false} />
           </div>
         )}
       </div>
@@ -308,17 +310,29 @@ export default function AdminPanel({
           <div className="p-4 pt-3 grid grid-cols-2 gap-4 border-t border-neutral-800/50">
             <div className="flex flex-col items-center justify-center p-3 bg-neutral-900/80 rounded-xl border border-neutral-800 text-center">
               <span className="text-[10px] text-neutral-400 font-bold mb-2">Foto Portada</span>
-              <img src={infoLocal.portadaUrl} className="w-full h-16 rounded-md object-cover opacity-60 mb-2" alt="" />
+              {infoLocalValues.portadaUrl ? (
+                <img src={infoLocalValues.portadaUrl} className="w-full h-16 rounded-md object-cover opacity-60 mb-2" alt="Portada" />
+              ) : (
+                <div className="w-full h-16 rounded-md border border-dashed border-neutral-700 bg-neutral-950/70 flex items-center justify-center text-[10px] text-neutral-500 mb-2">
+                  No hay imagen de portada cargada
+                </div>
+              )}
               <label className="cursor-pointer bg-neutral-800 hover:bg-neutral-700 text-white font-bold text-[10px] py-1 px-2.5 rounded border border-neutral-700 transition-colors">
-                Cambiar
+                {infoLocalValues.portadaUrl ? 'Cambiar' : 'Subir Imagen'}
                 <input type="file" accept="image/*" onChange={(event) => void onFileChange(event, 'portada')} className="hidden" />
               </label>
             </div>
             <div className="flex flex-col items-center justify-center p-3 bg-neutral-900/80 rounded-xl border border-neutral-800 text-center">
               <span className="text-[10px] text-neutral-400 font-bold mb-2">Logo / Perfil</span>
-              <img src={infoLocal.avatarUrl} className="w-12 h-12 rounded-full object-cover border border-sky-400/30 mb-2" alt="" />
+              {infoLocalValues.avatarUrl ? (
+                <img src={infoLocalValues.avatarUrl} className="w-12 h-12 rounded-full object-cover border border-sky-400/30 mb-2" alt="Logo" />
+              ) : (
+                <div className="w-12 h-12 rounded-full border border-dashed border-neutral-700 bg-neutral-950/70 mb-2 flex items-center justify-center text-[10px] text-neutral-500">
+                  Sin logo
+                </div>
+              )}
               <label className="cursor-pointer bg-neutral-800 hover:bg-neutral-700 text-white font-bold text-[10px] py-1 px-2.5 rounded border border-neutral-700 transition-colors">
-                Cambiar
+                {infoLocalValues.avatarUrl ? 'Cambiar' : 'Subir Imagen'}
                 <input type="file" accept="image/*" onChange={(event) => void onFileChange(event, 'avatar')} className="hidden" />
               </label>
             </div>
@@ -333,8 +347,8 @@ export default function AdminPanel({
         </button>
         {seccionAdminAbierta === 'cobros' && (
           <div className="p-4 pt-3 space-y-3 border-t border-neutral-800/50">
-            <input type="text" placeholder="CBU / CVU Bancario" value={infoLocal.cbuCvu} onChange={(e) => void handleInfoLocalChange('cbuCvu', e.target.value)} className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-2.5 px-3 text-xs text-white" disabled={suscripcionActiva === false} />
-            <input type="text" placeholder="Alias de Cuenta" value={infoLocal.alias} onChange={(e) => void handleInfoLocalChange('alias', e.target.value)} className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-2.5 px-3 text-xs text-white" disabled={suscripcionActiva === false} />
+            <input type="text" placeholder="CBU / CVU Bancario" value={infoLocalValues.cbuCvu ?? ''} onChange={(e) => void handleInfoLocalChange('cbuCvu', e.target.value)} className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-2.5 px-3 text-xs text-white" disabled={suscripcionActiva === false} />
+            <input type="text" placeholder="Alias de Cuenta" value={infoLocalValues.alias ?? ''} onChange={(e) => void handleInfoLocalChange('alias', e.target.value)} className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-2.5 px-3 text-xs text-white" disabled={suscripcionActiva === false} />
           </div>
         )}
       </div>

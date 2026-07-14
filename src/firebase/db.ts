@@ -26,7 +26,7 @@ export interface Producto {
 }
 
 interface ShopConfigData {
-  infoLocal: InfoLocal;
+  infoLocal: Partial<InfoLocal> | null;
   productos: Producto[];
   categorias: string[];
 }
@@ -74,9 +74,9 @@ export const categoriesPorDefecto: string[] = ["pizzas", "bebidas", "postres"];
 const leerDatosLocales = (): ShopConfigData => {
   if (typeof window === "undefined") {
     return {
-      infoLocal: infoLocalPorDefecto,
-      productos: productosPorDefecto,
-      categorias: categoriesPorDefecto,
+      infoLocal: null,
+      productos: [],
+      categorias: [],
     };
   }
 
@@ -84,23 +84,23 @@ const leerDatosLocales = (): ShopConfigData => {
     const guardado = window.localStorage.getItem(STORAGE_KEY);
     if (!guardado) {
       return {
-        infoLocal: infoLocalPorDefecto,
-        productos: productosPorDefecto,
-        categorias: categoriesPorDefecto,
+        infoLocal: null,
+        productos: [],
+        categorias: [],
       };
     }
 
     const parsed = JSON.parse(guardado) as Partial<ShopConfigData>;
     return {
-      infoLocal: { ...infoLocalPorDefecto, ...(parsed.infoLocal ?? {}) },
-      productos: Array.isArray(parsed.productos) ? parsed.productos : productosPorDefecto,
-      categorias: Array.isArray(parsed.categorias) ? parsed.categorias : categoriesPorDefecto,
+      infoLocal: parsed.infoLocal ?? null,
+      productos: Array.isArray(parsed.productos) ? parsed.productos : [],
+      categorias: Array.isArray(parsed.categorias) ? parsed.categorias : [],
     };
   } catch {
     return {
-      infoLocal: infoLocalPorDefecto,
-      productos: productosPorDefecto,
-      categorias: categoriesPorDefecto,
+      infoLocal: null,
+      productos: [],
+      categorias: [],
     };
   }
 };
@@ -112,19 +112,20 @@ const guardarDatosLocales = (data: ShopConfigData) => {
 };
 
 const normalizarDatos = (data: Partial<ShopConfigData> | null | undefined): ShopConfigData => {
-  const fallback = leerDatosLocales();
   return {
-    infoLocal: { ...fallback.infoLocal, ...(data?.infoLocal ?? {}) },
-    productos: Array.isArray(data?.productos) ? data.productos : fallback.productos,
-    categorias: Array.isArray(data?.categorias) ? data.categorias : fallback.categorias,
+    infoLocal: data?.infoLocal ?? null,
+    productos: Array.isArray(data?.productos) ? data.productos : [],
+    categorias: Array.isArray(data?.categorias) ? data.categorias : [],
   };
 };
 
 export const getShopConfigData = async (): Promise<ShopConfigData> => {
-  const fallback = leerDatosLocales();
-
   if (typeof window === "undefined") {
-    return fallback;
+    return {
+      infoLocal: null,
+      productos: [],
+      categorias: [],
+    };
   }
 
   try {
@@ -134,17 +135,27 @@ export const getShopConfigData = async (): Promise<ShopConfigData> => {
       guardarDatosLocales(data);
       return data;
     }
+
+    return {
+      infoLocal: null,
+      productos: [],
+      categorias: [],
+    };
   } catch (error) {
     console.warn("No se pudo leer Firestore, usando almacenamiento local:", error);
+    const fallback = leerDatosLocales();
+    return fallback;
   }
-
-  return fallback;
 };
 
-export const saveShopConfigData = async (payload: { infoLocal: InfoLocal; categorias: string[]; productos?: Producto[] }): Promise<boolean> => {
+export const saveShopConfigData = async (payload: {
+  infoLocal: Partial<InfoLocal> | null;
+  categorias: string[];
+  productos?: Producto[];
+}): Promise<boolean> => {
   const data: ShopConfigData = {
-    infoLocal: payload.infoLocal,
-    productos: payload.productos ?? leerDatosLocales().productos,
+    infoLocal: payload.infoLocal ?? null,
+    productos: payload.productos ?? [],
     categorias: payload.categorias,
   };
 
@@ -159,7 +170,7 @@ export const saveShopConfigData = async (payload: { infoLocal: InfoLocal; catego
 
 export const guardarProductosEnFirebase = async (
   nuevosProductos: Producto[],
-  infoLocal: InfoLocal,
+  infoLocal: Partial<InfoLocal> | null,
   categorias: string[],
   _suscripcionActiva?: boolean,
 ): Promise<boolean> => {

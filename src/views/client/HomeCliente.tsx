@@ -1,14 +1,11 @@
 // src/views/client/HomeCliente.tsx
 import React, { useState, useEffect } from 'react';
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'firebase/auth';
-import { doc, onSnapshot } from 'firebase/firestore';
+import { doc, onSnapshot, updateDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from '../../firebase';
 import {
   getShopConfigData,
   saveShopConfigData,
-  infoLocalPorDefecto,
-  productosPorDefecto,
-  categoriesPorDefecto,
   type InfoLocal,
   type Producto,
 } from '../../firebase/db';
@@ -29,9 +26,9 @@ interface ItemDelCarrito {
 type MetodoPago = 'efectivo' | 'transferencia';
 
 export default function HomeCliente({ onInitialized }: { onInitialized?: () => void }) {
-  const [infoLocal, setInfoLocal] = useState<InfoLocal>(infoLocalPorDefecto);
-  const [productos, setProductos] = useState<Producto[]>(productosPorDefecto);
-  const [categorias, setCategorias] = useState<string[]>(categoriesPorDefecto);
+  const [infoLocal, setInfoLocal] = useState<Partial<InfoLocal> | null>(null);
+  const [productos, setProductos] = useState<Producto[]>([]);
+  const [categorias, setCategorias] = useState<string[]>([]);
   const [contadorPedidos, setContadorPedidos] = useState<number>(() => Number(localStorage.getItem('local_pedidos_count') || '0'));
   const [cajaAcumulada, setCajaAcumulada] = useState<number>(() => Number(localStorage.getItem('local_caja_acumulada') || '0'));
   const [isAdminAutenticado, setIsAdminAutenticado] = useState(false);
@@ -43,6 +40,22 @@ export default function HomeCliente({ onInitialized }: { onInitialized?: () => v
   const [authError, setAuthError] = useState<string | null>(null);
   const [adminEmail, setAdminEmail] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
+
+  const infoLocalValues: InfoLocal = {
+    nombre: infoLocal?.nombre ?? '',
+    descripcion: infoLocal?.descripcion ?? '',
+    direccion: infoLocal?.direccion ?? '',
+    telefonoWhatsApp: infoLocal?.telefonoWhatsApp ?? '',
+    costoEnvio: infoLocal?.costoEnvio ?? 0,
+    portadaUrl: infoLocal?.portadaUrl ?? '',
+    avatarUrl: infoLocal?.avatarUrl ?? '',
+    cbuCvu: infoLocal?.cbuCvu ?? '',
+    alias: infoLocal?.alias ?? '',
+    instagram: infoLocal?.instagram ?? '',
+    facebook: infoLocal?.facebook ?? '',
+  };
+
+  const perfilVacio = !infoLocal;
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -64,31 +77,25 @@ export default function HomeCliente({ onInitialized }: { onInitialized?: () => v
       if (!activo) return;
 
       if (!data) {
-        setInfoLocal(infoLocalPorDefecto);
-        setProductos(productosPorDefecto.map((producto) => ({ ...producto, activo: producto.activo !== false })));
-        setCategorias(categoriesPorDefecto);
+        setInfoLocal(null);
+        setProductos([]);
+        setCategorias([]);
         setLoadingDatos(false);
         return;
       }
 
-      // Merge robusto de infoLocal: por defecto + datos de Firestore
-      // Esto asegura que campos como portadaUrl no se pierdan
       if (data.infoLocal) {
-        setInfoLocal({
-          ...infoLocalPorDefecto,
-          ...data.infoLocal,
-        });
+        setInfoLocal(data.infoLocal);
       } else {
-        setInfoLocal(infoLocalPorDefecto);
+        setInfoLocal(null);
       }
 
-      // Actualiza productos y categorías
       setProductos(
         Array.isArray(data.productos)
           ? data.productos.map((producto) => ({ ...producto, activo: producto.activo !== false }))
-          : productosPorDefecto.map((producto) => ({ ...producto, activo: producto.activo !== false }))
+          : []
       );
-      setCategorias(Array.isArray(data.categorias) ? data.categorias : categoriesPorDefecto);
+      setCategorias(Array.isArray(data.categorias) ? data.categorias : []);
       setErrorDatos(null);
       setLoadingDatos(false);
     };
@@ -109,10 +116,10 @@ export default function HomeCliente({ onInitialized }: { onInitialized?: () => v
       } catch (error) {
         console.error('Error al cargar datos de Firebase:', error);
         if (activo) {
-          setErrorDatos('No se pudieron cargar los datos desde Firebase. Se usaron los valores por defecto.');
-          setInfoLocal(infoLocalPorDefecto);
-          setProductos(productosPorDefecto.map((producto) => ({ ...producto, activo: producto.activo !== false })));
-          setCategorias(categoriesPorDefecto);
+          setErrorDatos('No se pudieron cargar los datos desde Firebase.');
+          setInfoLocal(null);
+          setProductos([]);
+          setCategorias([]);
           setLoadingDatos(false);
           try {
             onInitialized?.();
@@ -210,15 +217,17 @@ export default function HomeCliente({ onInitialized }: { onInitialized?: () => v
       if (!respuesta.ok) throw new Error('Error de subida');
       const datosImagen = await respuesta.json();
       const urlNube = datosImagen.secure_url;
+      const campoFirestore = tipo === 'portada' ? 'infoLocal.portadaUrl' : 'infoLocal.avatarUrl';
+      const docRef = doc(db, 'shop', 'config');
 
-      if (tipo === 'portada') {
-        setInfoLocal((p) => ({ ...p, portadaUrl: urlNube }));
+      try {
+        await updateDoc(docRef, { [campoFirestore]: urlNube } as any);
+      } catch (error) {
+        console.warn('No se pudo usar updateDoc, guardando con setDoc merge:', error);
+        await setDoc(docRef, { infoLocal: { [tipo === 'portada' ? 'portadaUrl' : 'avatarUrl']: urlNube } }, { merge: true });
       }
 
-      if (tipo === 'avatar') {
-        setInfoLocal((p) => ({ ...p, avatarUrl: urlNube }));
-      }
-
+      setInfoLocal((prev) => ({ ...(prev ?? {}), [tipo === 'portada' ? 'portadaUrl' : 'avatarUrl']: urlNube }));
       return urlNube;
     } catch (error) {
       console.error(error);
@@ -263,37 +272,35 @@ export default function HomeCliente({ onInitialized }: { onInitialized?: () => v
 
   const enviarPedidoWhatsApp = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!nombre || !telefono || !direccion || !entreCalles) return;
+      if (!nombre || !telefono || !direccion || !entreCalles || perfilVacio) return;
 
-    const subtotal = carrito.reduce((acc, item) => acc + (item.precio * item.cantidad), 0);
-    const totalFinal = subtotal + infoLocal.costoEnvio;
+      const subtotal = carrito.reduce((acc, item) => acc + (item.precio * item.cantidad), 0);
+      const totalFinal = subtotal + infoLocalValues.costoEnvio;
 
-    let mensaje = `⭐️ *NUEVO PEDIDO - ${infoLocal.nombre.toUpperCase()}* ⭐️\n\n`;
-    mensaje += `👤 *Cliente:* ${nombre}\n📞 *Teléfono:* ${telefono}\n📍 *Dirección:* ${direccion}\n🛣 *Entre Calles:* ${entreCalles}\n`;
-    
+      let mensaje = `⭐️ *NUEVO PEDIDO - ${infoLocalValues.nombre.toUpperCase()}* ⭐️\n\n`;
     if (gmapsLink.trim() !== "") {
       mensaje += `📌 *UBICACIÓN GOOGLE MAPS REPARTIDOR:*\n${gmapsLink.trim()}\n`;
     }
     
     mensaje += `\n🛒 *Detalle:*\n`;
     carrito.forEach(item => { mensaje += `• ${item.cantidad}x ${item.nombre} ($${(item.precio * item.cantidad).toLocaleString('es-AR')})\n`; });
-    mensaje += `\n💵 *Subtotal:* $${subtotal.toLocaleString('es-AR')}\n🛵 *Envío:* $${infoLocal.costoEnvio.toLocaleString('es-AR')}\n💰 *TOTAL:* $${totalFinal.toLocaleString('es-AR')}\n\n`;
-    mensaje += `💳 *Método de Pago:* ${metodoPago === 'efectivo' ? 'Efectivo Cash 💵' : 'Transferencia Bancaria/Virtual 📱'}\n`;
-    
-    if (metodoPago === 'efectivo') {
-      const m = Number(pagaCon);
-      mensaje += m && m > totalFinal ? `💸 *Paga con:* $${m}\n🪙 *Vuelto:* $${m - totalFinal}\n` : `💸 *Paga con:* Importe exacto\n`;
-    } else {
-      mensaje += `🏛 *CVU:* ${infoLocal.cbuCvu}\n🔑 *Alias:* ${infoLocal.alias}\n_Por favor, envíe el comprobante._\n`;
-    }
+mensaje += `\n💵 *Subtotal:* $${subtotal.toLocaleString('es-AR')}\n🛵 *Envío:* $${infoLocalValues.costoEnvio.toLocaleString('es-AR')}\n💰 *TOTAL:* $${totalFinal.toLocaleString('es-AR')}\n\n`;
+      mensaje += `💳 *Método de Pago:* ${metodoPago === 'efectivo' ? 'Efectivo Cash 💵' : 'Transferencia Bancaria/Virtual 📱'}\n`;
+      
+      if (metodoPago === 'efectivo') {
+        const m = Number(pagaCon);
+        mensaje += m && m > totalFinal ? `💸 *Paga con:* $${m}\n🪙 *Vuelto:* $${m - totalFinal}\n` : `💸 *Paga con:* Importe exacto\n`;
+      } else {
+        mensaje += `🏛 *CVU:* ${infoLocalValues.cbuCvu}\n🔑 *Alias:* ${infoLocalValues.alias}\n_Por favor, envíe el comprobante._\n`;
+      }
 
-    const nP = contadorPedidos + 1;
-    const nC = cajaAcumulada + totalFinal;
-    setContadorPedidos(nP); setCajaAcumulada(nC);
-    localStorage.setItem('local_pedidos_count', nP.toString());
-    localStorage.setItem('local_caja_acumulada', nC.toString());
+      const nP = contadorPedidos + 1;
+      const nC = cajaAcumulada + totalFinal;
+      setContadorPedidos(nP); setCajaAcumulada(nC);
+      localStorage.setItem('local_pedidos_count', nP.toString());
+      localStorage.setItem('local_caja_acumulada', nC.toString());
 
-    window.open(`https://wa.me/${infoLocal.telefonoWhatsApp}?text=${encodeURIComponent(mensaje)}`, '_blank');
+      window.open(`https://wa.me/${infoLocalValues.telefonoWhatsApp}?text=${encodeURIComponent(mensaje)}`, '_blank');
   };
 
   const ejecutarCierreCaja = () => {
@@ -400,24 +407,35 @@ export default function HomeCliente({ onInitialized }: { onInitialized?: () => v
       {/* VISTA 1: MENÚ DEL CLIENTE */}
       {vistaActual === 'menu' && (
         <>
-          <div className="h-44 bg-cover bg-center relative" style={{ backgroundImage: `url(${infoLocal.portadaUrl})` }}>
-            <div className="absolute inset-0 bg-black/50" />
+          <div className="h-44 bg-cover bg-center relative" style={infoLocalValues.portadaUrl ? { backgroundImage: `url(${infoLocalValues.portadaUrl})` } : undefined}>
+            <div className="absolute inset-0 bg-black/30" />
+            {!infoLocalValues.portadaUrl && (
+              <div className="absolute inset-0 bg-neutral-950/80 flex items-center justify-center text-xs text-neutral-400">
+                Portada no configurada. Cargá una imagen desde el panel admin.
+              </div>
+            )}
           </div>
           <div className="px-4 -mt-14 relative flex flex-col items-center text-center mb-2">
-            <img src={infoLocal.avatarUrl} alt="Logo" className="w-24 h-24 rounded-full border-4 border-sky-400 object-cover shadow-xl bg-neutral-900" />
+            {infoLocalValues.avatarUrl ? (
+              <img src={infoLocalValues.avatarUrl} alt="Logo" className="w-24 h-24 rounded-full border-4 border-sky-400 object-cover shadow-xl bg-neutral-900" />
+            ) : (
+              <div className="w-24 h-24 rounded-full border-4 border-dashed border-neutral-700 bg-neutral-950 flex items-center justify-center text-xs text-neutral-400 shadow-xl">
+                Sin logo
+              </div>
+            )}
             <div className="flex gap-1 mt-2 text-yellow-500">
               <Star size={16} fill="currentColor" className="float-slow" style={{ animationDelay: '0s' }} />
               <Star size={20} fill="currentColor" className="-mt-1 float-slower" style={{ animationDelay: '0.12s' }} />
               <Star size={16} fill="currentColor" className="float-slow" style={{ animationDelay: '0.24s' }} />
             </div>
-            <h1 className="text-3xl font-black mt-1 text-transparent bg-clip-text bg-gradient-to-r from-sky-400 via-white to-sky-400 tracking-tight">{infoLocal.nombre}</h1>
-            <p className="text-xs text-neutral-400 font-medium px-4 mt-1">{infoLocal.descripcion}</p>
+            <h1 className="text-3xl font-black mt-1 text-transparent bg-clip-text bg-gradient-to-r from-sky-400 via-white to-sky-400 tracking-tight">{infoLocalValues.nombre || 'Nombre no definido'}</h1>
+            <p className="text-xs text-neutral-400 font-medium px-4 mt-1">{infoLocalValues.descripcion || 'Descripción no configurada.'}</p>
             
             <div className="flex gap-4 mt-3 text-neutral-400">
-              {infoLocal.instagram && <a href={`https://instagram.com/${infoLocal.instagram.replace('@', '')}`} target="_blank" rel="noreferrer" className="text-xs bg-neutral-800 px-2.5 py-1 rounded-full border border-neutral-700/50">📸 Insta</a>}
-              {infoLocal.facebook && <a href={`https://facebook.com/${infoLocal.facebook.replace('@', '')}`} target="_blank" rel="noreferrer" className="text-xs bg-neutral-800 px-2.5 py-1 rounded-full border border-neutral-700/50">🔵 Face</a>}
+              {infoLocalValues.instagram && <a href={`https://instagram.com/${infoLocalValues.instagram.replace('@', '')}`} target="_blank" rel="noreferrer" className="text-xs bg-neutral-800 px-2.5 py-1 rounded-full border border-neutral-700/50">📸 Insta</a>}
+              {infoLocalValues.facebook && <a href={`https://facebook.com/${infoLocalValues.facebook.replace('@', '')}`} target="_blank" rel="noreferrer" className="text-xs bg-neutral-800 px-2.5 py-1 rounded-full border border-neutral-700/50">🔵 Face</a>}
             </div>
-            <div className="flex items-center gap-1 mt-3 text-xs text-sky-400 font-semibold bg-sky-950/40 px-3 py-1 rounded-full border border-sky-900/40"><MapPin size={13} /><span>{infoLocal.direccion}</span></div>
+            <div className="flex items-center gap-1 mt-3 text-xs text-sky-400 font-semibold bg-sky-950/40 px-3 py-1 rounded-full border border-sky-900/40"><MapPin size={13} /><span>{infoLocalValues.direccion || 'Dirección no disponible'}</span></div>
           </div>
 
           <div className="px-4 py-2">
@@ -534,15 +552,15 @@ export default function HomeCliente({ onInitialized }: { onInitialized?: () => v
                 ) : (
                   <div className="bg-neutral-900/80 p-3 rounded-xl text-xs text-neutral-300">
                     <p className="font-bold text-yellow-500">Datos de transferencia:</p>
-                    <p>Alias: {infoLocal.alias}</p><p>CVU: {infoLocal.cbuCvu}</p>
+                    <p>Alias: {infoLocalValues.alias}</p><p>CVU: {infoLocalValues.cbuCvu}</p>
                   </div>
                 )}
               </div>
 
               <div className="bg-neutral-800/60 p-4 rounded-2xl border border-neutral-700/30 text-sm space-y-1">
                 <div className="flex justify-between text-neutral-400"><span>Subtotal:</span><span>${subtotalCarrito.toLocaleString('es-AR')}</span></div>
-                <div className="flex justify-between text-neutral-400"><span>Envío:</span><span>${infoLocal.costoEnvio.toLocaleString('es-AR')}</span></div>
-                <div className="flex justify-between font-black text-white text-base mt-2"><span>Total Final:</span><span className="text-yellow-500">${(subtotalCarrito + infoLocal.costoEnvio).toLocaleString('es-AR')}</span></div>
+                <div className="flex justify-between text-neutral-400"><span>Envío:</span><span>${infoLocalValues.costoEnvio.toLocaleString('es-AR')}</span></div>
+                <div className="flex justify-between font-black text-white text-base mt-2"><span>Total Final:</span><span className="text-yellow-500">${(subtotalCarrito + infoLocalValues.costoEnvio).toLocaleString('es-AR')}</span></div>
               </div>
               <button type="submit" className="w-full bg-emerald-500 text-neutral-950 font-black py-4 rounded-2xl flex items-center justify-center gap-2 shadow-lg"><MessageSquare size={18} fill="currentColor" />Enviar por WhatsApp</button>
             </form>
