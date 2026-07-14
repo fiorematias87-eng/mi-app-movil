@@ -22,7 +22,7 @@ const crearDraft = (producto: Producto): Producto => ({
   precio: producto.precio ?? 0,
   categoria: producto.categoria ?? '',
   imagen: producto.imagen ?? '',
-  hidden: producto.hidden ?? false,
+  activo: producto.activo ?? false,
 });
 
 export default function ProductoItem({
@@ -70,7 +70,7 @@ export default function ProductoItem({
           precio: Number(draft.precio) || 0,
           categoria: draft.categoria.trim() || 'sin-categoria',
           imagen: '',
-          hidden: draft.hidden ?? false,
+          activo: draft.activo ?? false,
         });
         idParaSubir = tempRef.id;
         setDraft((prev) => ({ ...prev, id: tempRef.id }));
@@ -130,7 +130,7 @@ export default function ProductoItem({
         precio: Number(draft.precio),
         categoria: draft.categoria.trim(),
         imagen: draft.imagen.trim() || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?q=80&w=500',
-        hidden: draft.hidden ?? false,
+        activo: draft.activo ?? false,
       };
 
       const ok = await onSave(payload, Boolean(isNew));
@@ -147,14 +147,14 @@ export default function ProductoItem({
   };
 
   return (
-    <div className={`rounded-xl border p-2.5 transition-colors ${!draft.hidden ? 'border-neutral-800 bg-neutral-900/60' : 'border-neutral-900 bg-neutral-950/40 opacity-70'}`}>
+    <div className={`rounded-xl border p-2.5 transition-colors ${!draft.activo ? 'border-neutral-800 bg-neutral-900/60' : 'border-neutral-900 bg-neutral-950/40 opacity-70'}`}>
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 truncate">
           <img src={draft.imagen || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?q=80&w=500'} className="h-10 w-10 rounded-lg object-cover flex-shrink-0" alt={draft.nombre || 'Producto'} />
           <div className="truncate">
             <p className="truncate font-bold text-white">
               {draft.nombre || 'Sin nombre'}
-              {draft.hidden === true && <span className="ml-1 rounded bg-red-500/20 px-1 text-[9px] font-medium text-red-400">Pausado</span>}
+              {draft.activo === true && <span className="ml-1 rounded bg-red-500/20 px-1 text-[9px] font-medium text-red-400">Pausado</span>}
             </p>
             <p className="text-[10px] font-black text-yellow-500">${Number(draft.precio || 0).toLocaleString('es-AR')}</p>
           </div>
@@ -164,10 +164,10 @@ export default function ProductoItem({
           <button
             type="button"
             onClick={() => void onToggleHidden(draft.id || producto.id)}
-            className={`rounded-lg p-2 transition-transform duration-100 ease-in-out active:scale-95 active:opacity-90 ${!draft.hidden ? 'bg-emerald-950/40 text-emerald-400' : 'bg-red-950/40 text-red-400'}`}
+            className={`rounded-lg p-2 transition-transform duration-100 ease-in-out active:scale-95 active:opacity-90 ${!draft.activo ? 'bg-emerald-950/40 text-emerald-400' : 'bg-red-950/40 text-red-400'}`}
             disabled={disabled}
           >
-            {!draft.hidden ? <Eye size={12} /> : <EyeOff size={12} />}
+            {!draft.activo ? <Eye size={12} /> : <EyeOff size={12} />}
           </button>
           <button
             type="button"
@@ -232,8 +232,8 @@ export default function ProductoItem({
           <label className="flex items-center gap-2 text-[10px] text-neutral-400">
             <input
               type="checkbox"
-              checked={draft.hidden ?? false}
-              onChange={(event) => setDraft((prev) => ({ ...prev, hidden: event.target.checked }))}
+              checked={draft.activo ?? false}
+              onChange={(event) => setDraft((prev) => ({ ...prev, activo: event.target.checked }))}
               disabled={disabled}
             />
             Ocultar producto del menú
