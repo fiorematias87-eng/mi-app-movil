@@ -1,24 +1,12 @@
 // src/views/client/HomeCliente.tsx
-import React, { useEffect, useState } from 'react';
-import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'firebase/auth';
+import React, { useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
 import { doc, onSnapshot, updateDoc, setDoc } from 'firebase/firestore';
-import { auth, db } from '../../firebase';
-import { getShopConfigData, type InfoLocal, type Producto } from '../../firebase/db';
-import {
-  ShoppingBag,
-  ShoppingCart,
-  MessageSquare,
-  MapPin,
-  Plus,
-  Minus,
-  Trash2,
-  Star,
-  X,
-  ExternalLink,
-  Search,
-  Lock,
-} from 'lucide-react';
+import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'firebase/auth';
+import { ShoppingCart, Star, Minus, Plus, X, MapPin, Search, Trash2, ExternalLink, MessageSquare, ShoppingBag, Lock } from 'lucide-react';
 import AdminPanel from '../../components/AdminPanel';
+import { db, auth } from '../../firebase/config';
+import { getShopConfigData } from '../../firebase/db';
+import type { Producto, InfoLocal } from '../../types';
 
 interface ItemDelCarrito {
   id: string;
@@ -30,15 +18,21 @@ interface ItemDelCarrito {
 type MetodoPago = 'efectivo' | 'transferencia';
 
 type ShopConfigDataState = {
-  infoLocal: Partial<InfoLocal> | undefined;
+  infoLocal?: Partial<InfoLocal>;
   productos: Producto[];
   categorias: string[];
 };
 
-export default function HomeCliente({ onInitialized }: { onInitialized?: () => void }) {
-  const [infoLocal, setInfoLocal] = useState<Partial<InfoLocal> | undefined>(undefined);
-  const [productos, setProductos] = useState<Producto[]>([]);
-  const [categorias, setCategorias] = useState<string[]>([]);
+export interface HomeClienteProps {
+  productos: Producto[];
+  infoLocal: Partial<InfoLocal> | null;
+  categorias: string[];
+}
+
+export default function HomeCliente({ productos, infoLocal, categorias }: HomeClienteProps) {
+  const [infoLocalState, setInfoLocalState] = useState<Partial<InfoLocal> | null>(infoLocal ?? null);
+  const [productosState, setProductosState] = useState<Producto[]>(productos);
+  const [categoriasState, setCategoriasState] = useState<string[]>(categorias);
   const [contadorPedidos, setContadorPedidos] = useState<number>(() => Number(localStorage.getItem('local_pedidos_count') || '0'));
   const [cajaAcumulada, setCajaAcumulada] = useState<number>(() => Number(localStorage.getItem('local_caja_acumulada') || '0'));
   const [isAdminAutenticado, setIsAdminAutenticado] = useState(false);
@@ -97,34 +91,26 @@ export default function HomeCliente({ onInitialized }: { onInitialized?: () => v
   const [categoriaActiva, setCategoriaActiva] = useState<string>('pizzas');
 
   const infoLocalValues: InfoLocal = {
-    nombre: infoLocal?.nombre ?? '',
-    descripcion: infoLocal?.descripcion ?? '',
-    direccion: infoLocal?.direccion ?? '',
-    telefonoWhatsApp: infoLocal?.telefonoWhatsApp ?? '',
-    costoEnvio: infoLocal?.costoEnvio ?? 0,
-    portadaUrl: infoLocal?.portadaUrl ?? '',
-    avatarUrl: infoLocal?.avatarUrl ?? '',
-    cbuCvu: infoLocal?.cbuCvu ?? '',
-    alias: infoLocal?.alias ?? '',
-    instagram: infoLocal?.instagram ?? '',
-    facebook: infoLocal?.facebook ?? '',
+    nombre: infoLocalState?.nombre ?? '',
+    descripcion: infoLocalState?.descripcion ?? '',
+    direccion: infoLocalState?.direccion ?? '',
+    telefonoWhatsApp: infoLocalState?.telefonoWhatsApp ?? '',
+    costoEnvio: infoLocalState?.costoEnvio ?? 0,
+    portadaUrl: infoLocalState?.portadaUrl ?? '',
+    avatarUrl: infoLocalState?.avatarUrl ?? '',
+    cbuCvu: infoLocalState?.cbuCvu ?? '',
+    alias: infoLocalState?.alias ?? '',
+    instagram: infoLocalState?.instagram ?? '',
+    facebook: infoLocalState?.facebook ?? '',
   };
 
-  const perfilVacio = !infoLocal;
+  const perfilVacio = !infoLocalState;
 
   useEffect(() => {
-    if (categorias.length > 0 && !categorias.includes(categoriaActiva)) {
-      setCategoriaActiva(categorias[0]);
+    if (categoriasState.length > 0 && !categoriasState.includes(categoriaActiva)) {
+      setCategoriaActiva(categoriasState[0]);
     }
-  }, [categorias, categoriaActiva]);
-
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setIsAdminAutenticado(Boolean(user));
-    });
-
-    return unsubscribe;
-  }, []);
+  }, [categoriasState, categoriaActiva]);
 
   useEffect(() => {
     let activo = true;
@@ -134,25 +120,25 @@ export default function HomeCliente({ onInitialized }: { onInitialized?: () => v
       if (!activo) return;
 
       if (!data) {
-        setInfoLocal(undefined);
-        setProductos([]);
-        setCategorias([]);
+        setInfoLocalState(null);
+        setProductosState([]);
+        setCategoriasState([]);
         setLoadingDatos(false);
         return;
       }
 
       if (data.infoLocal) {
-        setInfoLocal(data.infoLocal);
+        setInfoLocalState(data.infoLocal);
       } else {
-        setInfoLocal(undefined);
+        setInfoLocalState(null);
       }
 
-      setProductos(
+      setProductosState(
         Array.isArray(data.productos)
           ? data.productos.map((producto) => ({ ...producto, hidden: producto.hidden === true }))
           : []
       );
-      setCategorias(Array.isArray(data.categorias) ? data.categorias : []);
+      setCategoriasState(Array.isArray(data.categorias) ? data.categorias : []);
       setErrorDatos(null);
       setLoadingDatos(false);
     };
@@ -166,20 +152,14 @@ export default function HomeCliente({ onInitialized }: { onInitialized?: () => v
         if (!activo) return;
         aplicarDatosDesdeFirestore(data);
 
-        try {
-          onInitialized?.();
-        } catch {}
       } catch (error) {
         console.error('Error al cargar datos de Firebase:', error);
         if (activo) {
           setErrorDatos('No se pudieron cargar los datos desde Firebase.');
-          setInfoLocal(undefined);
-          setProductos([]);
-          setCategorias([]);
+          setInfoLocalState(null);
+          setProductosState([]);
+          setCategoriasState([]);
           setLoadingDatos(false);
-          try {
-            onInitialized?.();
-          } catch {}
         }
       }
     };
@@ -209,6 +189,17 @@ export default function HomeCliente({ onInitialized }: { onInitialized?: () => v
       activo = false;
       unsubscribe();
     };
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setIsAdminAutenticado(Boolean(user));
+      if (!user) {
+        setAuthError(null);
+      }
+    });
+
+    return () => unsubscribe();
   }, []);
 
   useEffect(() => {
@@ -260,7 +251,7 @@ export default function HomeCliente({ onInitialized }: { onInitialized?: () => v
     }
   };
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>, tipo: 'portada' | 'avatar' | 'producto') => {
+  const handleFileChange = async (e: ChangeEvent<HTMLInputElement>, tipo: 'portada' | 'avatar' | 'producto') => {
     const file = e.target.files?.[0];
     if (!file) return undefined;
 
@@ -301,7 +292,7 @@ export default function HomeCliente({ onInitialized }: { onInitialized?: () => v
 
       const campo = tipo === 'portada' ? 'portadaUrl' : 'avatarUrl';
       await persistirInfoLocalEnFirestore(campo, urlNube);
-      setInfoLocal((prev) => ({ ...(prev ?? {}), [campo]: urlNube }));
+      setInfoLocalState((prev: Partial<InfoLocal> | null) => ({ ...(prev ?? {}), [campo]: urlNube }));
 
       return urlNube;
     } catch (error) {
@@ -313,7 +304,7 @@ export default function HomeCliente({ onInitialized }: { onInitialized?: () => v
     }
   };
 
-  const iniciarSesionAdmin = async (e: React.FormEvent) => {
+  const iniciarSesionAdmin = async (e: FormEvent) => {
     e.preventDefault();
     setAuthLoading(true);
     setAuthError(null);
@@ -322,6 +313,7 @@ export default function HomeCliente({ onInitialized }: { onInitialized?: () => v
       await signInWithEmailAndPassword(auth, adminEmail.trim(), adminPassword);
       setAdminEmail('');
       setAdminPassword('');
+      setIsAdminAutenticado(true);
       setVistaActual('admin');
     } catch (error: unknown) {
       const mensaje = error instanceof Error ? error.message : 'No se pudo iniciar sesión.';
@@ -347,12 +339,13 @@ export default function HomeCliente({ onInitialized }: { onInitialized?: () => v
       } catch (error) {
         console.error('Error al cerrar sesión:', error);
       }
+      setIsAdminAutenticado(false);
       setVistaActual('menu');
     }
   };
 
   const agregarAlCarrito = (producto: Producto) => {
-    setCarrito((prev) => {
+    setCarrito((prev: ItemDelCarrito[]) => {
       const existente = prev.find((item) => item.id === producto.id);
       if (existente) {
         return prev.map((item) => (item.id === producto.id ? { ...item, cantidad: item.cantidad + 1 } : item));
@@ -372,7 +365,7 @@ export default function HomeCliente({ onInitialized }: { onInitialized?: () => v
   };
 
   const modificarCantidad = (id: string, accion: 'sumar' | 'restar') => {
-    setCarrito((prev) => prev.flatMap((item) => {
+    setCarrito((prev: ItemDelCarrito[]) => prev.flatMap((item) => {
       if (item.id !== id) return [item];
       if (accion === 'sumar') return [{ ...item, cantidad: item.cantidad + 1 }];
       if (item.cantidad <= 1) return [];
@@ -400,7 +393,7 @@ export default function HomeCliente({ onInitialized }: { onInitialized?: () => v
     setCajaAcumulada(0);
   };
 
-  const enviarPedidoWhatsApp = (e: React.FormEvent) => {
+  const enviarPedidoWhatsApp = (e: FormEvent) => {
     e.preventDefault();
 
     const itemsTexto = carrito.map((item) => `• ${item.nombre} x${item.cantidad}`).join('\n');
@@ -431,7 +424,7 @@ export default function HomeCliente({ onInitialized }: { onInitialized?: () => v
     setVistaActual('menu');
     setPagaCon('');
 
-    setContadorPedidos((prev) => {
+    setContadorPedidos((prev: number) => {
       const siguiente = prev + 1;
       if (typeof window !== 'undefined') {
         window.localStorage.setItem('local_pedidos_count', String(siguiente));
@@ -439,7 +432,7 @@ export default function HomeCliente({ onInitialized }: { onInitialized?: () => v
       return siguiente;
     });
 
-    setCajaAcumulada((prev) => {
+    setCajaAcumulada((prev: number) => {
       const siguiente = prev + total;
       if (typeof window !== 'undefined') {
         window.localStorage.setItem('local_caja_acumulada', String(siguiente));
@@ -451,12 +444,15 @@ export default function HomeCliente({ onInitialized }: { onInitialized?: () => v
   const cantidadTotalProductos = carrito.reduce((acc: number, item: ItemDelCarrito) => acc + item.cantidad, 0);
   const subtotalCarrito = carrito.reduce((acc: number, item: ItemDelCarrito) => acc + item.precio * item.cantidad, 0);
 
-  const productosFiltradosCliente = productos.filter((p: Producto) => {
+  const productosFiltradosCliente = productosState.filter((p: Producto) => {
     const estaActivo = !(p.hidden === true);
     const coincideCategoria = p.categoria === categoriaActiva;
-    const coincideBusqueda = p.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
+    const coincideBusqueda =
+      p.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
       p.descripcion.toLowerCase().includes(busqueda.toLowerCase());
-    return busqueda.trim() !== '' ? (estaActivo && coincideBusqueda) : (estaActivo && coincideCategoria && coincideBusqueda);
+    return busqueda.trim() !== ''
+      ? estaActivo && coincideBusqueda
+      : estaActivo && coincideCategoria && coincideBusqueda;
   });
 
   return (
@@ -542,7 +538,7 @@ export default function HomeCliente({ onInitialized }: { onInitialized?: () => v
 
           {busqueda.trim() === '' && (
             <div className="flex gap-2 overflow-x-auto px-4 py-2 sticky top-0 bg-neutral-900/90 backdrop-blur-md z-10 scrollbar-none">
-              {categorias.map((cat) => (
+              {categoriasState.map((cat) => (
                 <button key={cat} onClick={() => setCategoriaActiva(cat)} className={`px-5 py-2.5 rounded-full capitalize font-black text-xs tracking-wider transition-transform duration-100 ease-in-out active:scale-95 active:opacity-90 ${categoriaActiva === cat ? 'bg-gradient-to-r from-sky-400 to-sky-500 text-neutral-950 shadow-md hover:shadow-lg' : 'bg-neutral-800 text-neutral-400 hover:opacity-90'}`}>
                   {cat}
                 </button>
@@ -674,12 +670,12 @@ export default function HomeCliente({ onInitialized }: { onInitialized?: () => v
           </div>
         ) : (
           <AdminPanel
-            infoLocal={infoLocal}
-            setInfoLocal={setInfoLocal}
-            productos={productos}
-            setProductos={setProductos}
-            categorias={categorias}
-            setCategorias={setCategorias}
+            infoLocal={infoLocalState}
+            setInfoLocal={setInfoLocalState}
+            productos={productosState}
+            setProductos={setProductosState}
+            categorias={categoriasState}
+            setCategorias={setCategoriasState}
             contadorPedidos={contadorPedidos}
             cajaAcumulada={cajaAcumulada}
             onCerrarSesion={cerrarSesionAdmin}

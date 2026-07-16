@@ -1,5 +1,15 @@
 import { db } from "./config";
-import { doc, getDoc, onSnapshot, setDoc } from "firebase/firestore";
+import {
+  doc,
+  getDoc,
+  onSnapshot,
+  setDoc,
+  collection,
+  getDocs,
+  CollectionReference,
+  QuerySnapshot,
+  DocumentData,
+} from "firebase/firestore";
 
 export interface InfoLocal {
   nombre: string;
@@ -32,6 +42,8 @@ interface ShopConfigData {
 }
 
 const CONFIG_DOC = doc(db, "shop", "config");
+// Cambiado: la colección de productos ahora es una colección raíz "productos"
+const PRODUCTOS_COL: CollectionReference<DocumentData> = collection(db, "productos");
 
 export const infoLocalPorDefecto: InfoLocal = {
   nombre: "Mi Local",
@@ -119,18 +131,34 @@ const normalizarDatos = (data: Partial<ShopConfigData> | null | undefined): Shop
 
 export const getShopConfigData = async (): Promise<ShopConfigData> => {
   try {
+    // Leer meta del doc config
     const snapshot = await getDoc(CONFIG_DOC);
-    if (snapshot.exists()) {
-      return normalizarDatos(snapshot.data() as Partial<ShopConfigData> | undefined);
-    }
+    const configData = snapshot.exists() ? (snapshot.data() as Partial<ShopConfigData>) : undefined;
 
-    // No existe documento: devolver valores por defecto normalizados
-    return normalizarDatos(undefined);
+    // Leer productos desde la colección raíz 'productos' (fuente de verdad)
+    const productosSnap = await getDocs(PRODUCTOS_COL);
+    const productosFromCol: Producto[] = productosSnap.docs.map((d) => {
+      const data = d.data() as Partial<Producto>;
+      return {
+        id: data.id ?? d.id,
+        nombre: data.nombre ?? "",
+        descripcion: data.descripcion ?? "",
+        precio: typeof data.precio === "number" ? data.precio : 0,
+        categoria: data.categoria ?? "",
+        imagen: data.imagen ?? "",
+        hidden: data.hidden ?? false,
+      };
+    });
+
+    return {
+      infoLocal: { ...infoLocalPorDefecto, ...(configData?.infoLocal ?? {}) },
+      productos: productosFromCol.length ? productosFromCol : productosPorDefecto,
+      categorias: Array.isArray(configData?.categorias) && configData!.categorias.length ? configData!.categorias : categoriesPorDefecto,
+    };
   } catch (error) {
     console.warn("No se pudo leer Firestore, usando almacenamiento local:", error);
     const fallback = leerDatosLocales();
     if (fallback && (fallback.productos.length || fallback.categorias.length || fallback.infoLocal)) return fallback;
-    // Si no hay datos locales, devolver valores por defecto
     return {
       infoLocal: infoLocalPorDefecto,
       productos: productosPorDefecto,
@@ -141,6 +169,24 @@ export const getShopConfigData = async (): Promise<ShopConfigData> => {
 
 export type SaveShopConfigDataPayload = Partial<ShopConfigData>;
 
+/**
+ * Guarda/actualiza productos de forma individual en la colección `productos`.
+ * Upsert por product.id.
+ */
+export const saveProductosToCollection = async (nuevosProductos: Producto[]): Promise<void> => {
+  await Promise.all(
+    nuevosProductos.map((p) =>
+      setDoc(doc(db, "productos", p.id), {
+        ...p,
+      }),
+    ),
+  );
+};
+
+/**
+ * saveShopConfigData ahora solo persiste meta (infoLocal, categorias) en shop/config.
+ * Si payload.productos está presente, los persiste en la colección raíz 'productos' via saveProductosToCollection.
+ */
 export const saveShopConfigData = async (
   payload: SaveShopConfigDataPayload,
 ): Promise<boolean> => {
@@ -148,10 +194,6 @@ export const saveShopConfigData = async (
 
   if (payload.infoLocal !== undefined) {
     data.infoLocal = payload.infoLocal;
-  }
-
-  if (payload.productos !== undefined) {
-    data.productos = payload.productos;
   }
 
   if (payload.categorias !== undefined) {
@@ -164,7 +206,7 @@ export const saveShopConfigData = async (
       const existente = leerDatosLocales();
       const merged: ShopConfigData = {
         infoLocal: data.infoLocal ?? existente.infoLocal ?? infoLocalPorDefecto,
-        productos: data.productos ?? existente.productos ?? productosPorDefecto,
+        productos: payload.productos ?? existente.productos ?? productosPorDefecto,
         categorias: data.categorias ?? existente.categorias ?? categoriesPorDefecto,
       };
       guardarDatosLocales(merged);
@@ -172,9 +214,16 @@ export const saveShopConfigData = async (
       console.warn('Error actualizando localStorage:', err);
     }
 
-    // Guardar en Firebase en background sin esperar
+    // Si vienen productos, persistirlos en la colección raíz 'productos' (fuente de verdad)
+    if (payload.productos !== undefined) {
+      saveProductosToCollection(payload.productos).catch((err) => {
+        console.error("Error guardando productos en colección:", err);
+      });
+    }
+
+    // Guardar meta en Firebase en background sin esperar
     setDoc(CONFIG_DOC, data, { merge: true }).catch((error) => {
-      console.error('Error guardando en Firestore:', error);
+      console.error('Error guardando en Firestore (config):', error);
     });
 
     return true;
@@ -190,13 +239,13 @@ export const guardarProductosEnFirebase = async (
   categorias: string[],
 ): Promise<boolean> => {
   try {
-    // To ensure the collection `productos` is the single source of truth,
-    // avoid writing the full products array into the shop/config document.
-    // Persist only meta (infoLocal and categorias) in the config doc.
-    return await saveShopConfigData({
+    // Persistir productos en colección + meta en config
+    await saveProductosToCollection(nuevosProductos);
+    await saveShopConfigData({
       infoLocal,
       categorias,
     });
+    return true;
   } catch (error) {
     console.error("No se pudo guardar el catálogo:", error);
     return false;
@@ -207,6 +256,10 @@ export const verificarSuscripcion = async (): Promise<boolean> => {
   return true;
 };
 
+/**
+ * Suscribe a cambios en la colección `productos` (fuente de verdad) y al doc `shop/config` para meta.
+ * Devuelve una función de unsubscribe que limpia ambas suscripciones.
+ */
 export const suscribirProductos = (callback: (data: ShopConfigData) => void) => {
   if (typeof window === "undefined") {
     callback({
@@ -218,19 +271,51 @@ export const suscribirProductos = (callback: (data: ShopConfigData) => void) => 
   }
 
   try {
-    return onSnapshot(CONFIG_DOC, (snapshot) => {
-      if (snapshot.exists()) {
-        const data = normalizarDatos(snapshot.data() as Partial<ShopConfigData> | undefined);
-        callback(data);
-        return;
-      }
+    let latestConfig: Partial<ShopConfigData> | undefined = undefined;
+    let latestProductos: Producto[] = [];
 
-      callback({
-        infoLocal: infoLocalPorDefecto,
-        productos: productosPorDefecto,
-        categorias: categoriesPorDefecto,
+    const emitir = () => {
+      const merged: ShopConfigData = {
+        infoLocal: { ...infoLocalPorDefecto, ...(latestConfig?.infoLocal ?? {}) },
+        productos: latestProductos.length ? latestProductos : productosPorDefecto,
+        categorias: Array.isArray(latestConfig?.categorias) && latestConfig!.categorias.length ? latestConfig!.categorias : categoriesPorDefecto,
+      };
+      callback(merged);
+    };
+
+    const unsubProductos = onSnapshot(PRODUCTOS_COL, (snap: QuerySnapshot<DocumentData>) => {
+      latestProductos = snap.docs.map((d) => {
+        const data = d.data() as Partial<Producto>;
+        return {
+          id: data.id ?? d.id,
+          nombre: data.nombre ?? "",
+          descripcion: data.descripcion ?? "",
+          precio: typeof data.precio === "number" ? data.precio : 0,
+          categoria: data.categoria ?? "",
+          imagen: data.imagen ?? "",
+          hidden: data.hidden ?? false,
+        };
       });
+      emitir();
+    }, (err) => {
+      console.warn("Error suscribiendo a productos:", err);
     });
+
+    const unsubConfig = onSnapshot(CONFIG_DOC, (snapshot) => {
+      if (snapshot.exists()) {
+        latestConfig = snapshot.data() as Partial<ShopConfigData>;
+      } else {
+        latestConfig = undefined;
+      }
+      emitir();
+    }, (err) => {
+      console.warn("Error suscribiendo a config:", err);
+    });
+
+    return () => {
+      try { unsubProductos(); } catch {}
+      try { unsubConfig(); } catch {}
+    };
   } catch (error) {
     console.warn("No se pudo suscribir a Firestore:", error);
     return () => undefined;

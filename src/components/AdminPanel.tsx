@@ -27,8 +27,8 @@ import {
 } from '../firebase/db';
 
 interface AdminPanelProps {
-  infoLocal: Partial<InfoLocal> | undefined;
-  setInfoLocal: React.Dispatch<React.SetStateAction<Partial<InfoLocal> | undefined>>;
+  infoLocal: Partial<InfoLocal> | null | undefined;
+  setInfoLocal: React.Dispatch<React.SetStateAction<Partial<InfoLocal> | null>>;
   productos: Producto[];
   setProductos: React.Dispatch<React.SetStateAction<Producto[]>>;
   categorias: string[];
@@ -40,6 +40,7 @@ interface AdminPanelProps {
   onEjecutarCierreCaja: () => void;
   subiendoImagen: boolean;
   onFileChange: (event: React.ChangeEvent<HTMLInputElement>, tipo: 'portada' | 'avatar' | 'producto', productId?: string) => Promise<string | undefined>;
+  onInitialized?: () => void; // opcional: sólo añadir si realmente la usas desde App.tsx
 }
 
 type ProductoFormState = {
@@ -74,6 +75,7 @@ export default function AdminPanel({
   onEjecutarCierreCaja,
   subiendoImagen,
   onFileChange,
+  onInitialized,
 }: AdminPanelProps) {
   const [seccionAdminAbierta, setSeccionAdminAbierta] = useState<string | null>('productos');
   const [editandoProductoId, setEditandoProductoId] = useState<string | null>(null);
