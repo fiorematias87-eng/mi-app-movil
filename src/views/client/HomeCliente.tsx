@@ -1,10 +1,9 @@
 // src/views/client/HomeCliente.tsx
 import React, { useEffect, useState } from 'react';
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'firebase/auth';
-import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { auth, db, storage } from '../../firebase';
-import { saveShopConfigData, type InfoLocal, type Producto } from '../../firebase/db';
+import { doc, onSnapshot, updateDoc, setDoc } from 'firebase/firestore';
+import { auth, db } from '../../firebase';
+import { getShopConfigData, type InfoLocal, type Producto } from '../../firebase/db';
 import {
   ShoppingBag,
   ShoppingCart,
@@ -30,29 +29,23 @@ interface ItemDelCarrito {
 
 type MetodoPago = 'efectivo' | 'transferencia';
 
-export default function HomeCliente({
-  productos: productosProp = [],
-  infoLocal: infoLocalProp = null,
-  categorias: categoriasProp = [],
-}: {
-  productos?: Producto[];
-  infoLocal?: Partial<InfoLocal> | null;
-  categorias?: string[];
-}) {
-  const [infoLocal, setInfoLocal] = useState<Partial<InfoLocal> | null>(infoLocalProp);
-  const [productos, setProductos] = useState<Producto[]>(productosProp);
-  const [categorias, setCategorias] = useState<string[]>(categoriasProp);
-  const [contadorPedidos, setContadorPedidos] = useState<number>(() => {
-    if (typeof window === 'undefined') return 0;
-    return Number(window.localStorage.getItem('local_pedidos_count') || '0');
-  });
-  const [cajaAcumulada, setCajaAcumulada] = useState<number>(() => {
-    if (typeof window === 'undefined') return 0;
-    return Number(window.localStorage.getItem('local_caja_acumulada') || '0');
-  });
+type ShopConfigDataState = {
+  infoLocal: Partial<InfoLocal> | undefined;
+  productos: Producto[];
+  categorias: string[];
+};
+
+export default function HomeCliente({ onInitialized }: { onInitialized?: () => void }) {
+  const [infoLocal, setInfoLocal] = useState<Partial<InfoLocal> | undefined>(undefined);
+  const [productos, setProductos] = useState<Producto[]>([]);
+  const [categorias, setCategorias] = useState<string[]>([]);
+  const [contadorPedidos, setContadorPedidos] = useState<number>(() => Number(localStorage.getItem('local_pedidos_count') || '0'));
+  const [cajaAcumulada, setCajaAcumulada] = useState<number>(() => Number(localStorage.getItem('local_caja_acumulada') || '0'));
   const [isAdminAutenticado, setIsAdminAutenticado] = useState(false);
   const [subiendoImagen, setSubiendoImagen] = useState(false);
   const [animarCarrito, setAnimarCarrito] = useState(false);
+  const [loadingDatos, setLoadingDatos] = useState(true);
+  const [errorDatos, setErrorDatos] = useState<string | null>(null);
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [adminEmail, setAdminEmail] = useState('');
@@ -101,7 +94,7 @@ export default function HomeCliente({
   });
   const [metodoPago, setMetodoPago] = useState<MetodoPago>('efectivo');
   const [pagaCon, setPagaCon] = useState<string>('');
-  const [categoriaActiva, setCategoriaActiva] = useState<string>(categoriasProp[0] ?? 'pizzas');
+  const [categoriaActiva, setCategoriaActiva] = useState<string>('pizzas');
 
   const infoLocalValues: InfoLocal = {
     nombre: infoLocal?.nombre ?? '',
@@ -120,14 +113,6 @@ export default function HomeCliente({
   const perfilVacio = !infoLocal;
 
   useEffect(() => {
-    Promise.resolve().then(() => {
-      setProductos(productosProp);
-      setInfoLocal(infoLocalProp ?? null);
-      setCategorias(categoriasProp);
-    });
-  }, [productosProp, infoLocalProp, categoriasProp]);
-
-  useEffect(() => {
     if (categorias.length > 0 && !categorias.includes(categoriaActiva)) {
       setCategoriaActiva(categorias[0]);
     }
@@ -141,8 +126,90 @@ export default function HomeCliente({
     return unsubscribe;
   }, []);
 
-  // Sincronizar cambios desde props (ya viene de App.tsx con datos persistidos)
-  // No necesitamos otro listener aquí ya que App.tsx se encarga de Firebase
+  useEffect(() => {
+    let activo = true;
+    const docRef = doc(db, 'shop', 'config');
+
+    const aplicarDatosDesdeFirestore = (data: ShopConfigDataState | null | undefined) => {
+      if (!activo) return;
+
+      if (!data) {
+        setInfoLocal(undefined);
+        setProductos([]);
+        setCategorias([]);
+        setLoadingDatos(false);
+        return;
+      }
+
+      if (data.infoLocal) {
+        setInfoLocal(data.infoLocal);
+      } else {
+        setInfoLocal(undefined);
+      }
+
+      setProductos(
+        Array.isArray(data.productos)
+          ? data.productos.map((producto) => ({ ...producto, hidden: producto.hidden === true }))
+          : []
+      );
+      setCategorias(Array.isArray(data.categorias) ? data.categorias : []);
+      setErrorDatos(null);
+      setLoadingDatos(false);
+    };
+
+    const cargarDesdeNube = async () => {
+      try {
+        setLoadingDatos(true);
+        setErrorDatos(null);
+        const data = await getShopConfigData();
+
+        if (!activo) return;
+        aplicarDatosDesdeFirestore(data);
+
+        try {
+          onInitialized?.();
+        } catch {}
+      } catch (error) {
+        console.error('Error al cargar datos de Firebase:', error);
+        if (activo) {
+          setErrorDatos('No se pudieron cargar los datos desde Firebase.');
+          setInfoLocal(undefined);
+          setProductos([]);
+          setCategorias([]);
+          setLoadingDatos(false);
+          try {
+            onInitialized?.();
+          } catch {}
+        }
+      }
+    };
+
+    void cargarDesdeNube();
+
+    const unsubscribe = onSnapshot(
+      docRef,
+      (snapshot) => {
+        if (!activo) return;
+        if (snapshot.exists()) {
+          const data = snapshot.data() as ShopConfigDataState | undefined;
+          aplicarDatosDesdeFirestore(data);
+        } else {
+          aplicarDatosDesdeFirestore(null);
+        }
+      },
+      (error) => {
+        console.error('Error al escuchar cambios en Firestore:', error);
+        if (activo) {
+          setErrorDatos('Se perdió la conexión con la base de datos en tiempo real.');
+        }
+      }
+    );
+
+    return () => {
+      activo = false;
+      unsubscribe();
+    };
+  }, []);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -182,63 +249,64 @@ export default function HomeCliente({
     });
   };
 
-  const handleFileChange = async (
-    e: React.ChangeEvent<HTMLInputElement>,
-    tipo: 'portada' | 'avatar' | 'producto',
-    productId?: string,
-  ) => {
+  const persistirInfoLocalEnFirestore = async (campo: 'portadaUrl' | 'avatarUrl', urlNube: string) => {
+    const docRef = doc(db, 'shop', 'config');
+
+    try {
+      await updateDoc(docRef, { [`infoLocal.${campo}`]: urlNube });
+    } catch (error) {
+      console.warn('No se pudo usar updateDoc, guardando con setDoc merge:', error);
+      await setDoc(docRef, { infoLocal: { [campo]: urlNube } }, { merge: true });
+    }
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>, tipo: 'portada' | 'avatar' | 'producto') => {
     const file = e.target.files?.[0];
     if (!file) return undefined;
 
+    const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
+    const uploadPreset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
+
+    if (!cloudName || !uploadPreset) {
+      alert('Error de configuración de Cloudinary en las variables de entorno.');
+      return undefined;
+    }
+
+    setSubiendoImagen(true);
+
     try {
-      setSubiendoImagen(true);
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('upload_preset', uploadPreset);
 
-      const userId = auth.currentUser?.uid;
-      if (tipo !== 'producto' && !userId) {
-        throw new Error('No hay un usuario autenticado para guardar la imagen de perfil.');
+      const respuesta = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!respuesta.ok) {
+        throw new Error('No se pudo subir la imagen a Cloudinary.');
       }
 
-      let rutaStorage = '';
-      if (tipo === 'producto') {
-        if (!productId) {
-          throw new Error('Se requiere un productId para subir una imagen de producto.');
-        }
-        rutaStorage = `productos/${productId}/${Date.now()}.jpg`;
-      } else {
-        rutaStorage = `perfil/${userId}/${tipo === 'portada' ? 'portada.jpg' : 'avatar.jpg'}`;
+      const datosImagen = await respuesta.json() as { secure_url?: string };
+      const urlNube = datosImagen.secure_url;
+
+      if (!urlNube) {
+        throw new Error('Cloudinary no devolvió una URL válida.');
       }
 
-      const fileRef = ref(storage, rutaStorage);
-      await uploadBytes(fileRef, file);
-      const urlNube = await getDownloadURL(fileRef);
-
       if (tipo === 'producto') {
-        await updateDoc(doc(db, 'productos', productId!), { imagen: urlNube });
         return urlNube;
       }
 
       const campo = tipo === 'portada' ? 'portadaUrl' : 'avatarUrl';
-      const nuevaInfoLocal = { ...(infoLocal ?? {}), [campo]: urlNube };
-      
-      // Actualizar estado LOCAL inmediatamente
-      setInfoLocal(nuevaInfoLocal);
-      
-      // Actualizar localStorage INMEDIATAMENTE para feedback visual
-      if (typeof window !== 'undefined') {
-        const cached = window.localStorage.getItem('cached_infoLocal');
-        const current = cached ? JSON.parse(cached) : {};
-        window.localStorage.setItem('cached_infoLocal', JSON.stringify({ ...current, ...nuevaInfoLocal }));
-      }
-
-      // Guardar en Firebase en background (sin esperar)
-      saveShopConfigData({ infoLocal: nuevaInfoLocal, categorias, productos }).catch((err) => {
-        console.error('Error guardando en Firebase:', err);
-      });
+      await persistirInfoLocalEnFirestore(campo, urlNube);
+      setInfoLocal((prev) => ({ ...(prev ?? {}), [campo]: urlNube }));
 
       return urlNube;
     } catch (error) {
-      console.error(error);
-      alert('Error al subir la imagen.');
+      console.error('Error al subir la imagen:', error);
+      alert(tipo === 'producto' ? 'No se pudo subir la imagen del producto.' : 'Error al subir la imagen.');
       return undefined;
     } finally {
       setSubiendoImagen(false);

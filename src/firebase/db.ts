@@ -26,7 +26,7 @@ export interface Producto {
 }
 
 interface ShopConfigData {
-  infoLocal: Partial<InfoLocal> | null;
+  infoLocal: Partial<InfoLocal> | undefined;
   productos: Producto[];
   categorias: string[];
 }
@@ -74,7 +74,7 @@ const STORAGE_KEY = "mi_app_shop_config_v1";
 const leerDatosLocales = (): ShopConfigData => {
   if (typeof window === "undefined") {
     return {
-      infoLocal: null,
+      infoLocal: undefined,
       productos: [],
       categorias: [],
     };
@@ -84,7 +84,7 @@ const leerDatosLocales = (): ShopConfigData => {
     const guardado = window.localStorage.getItem(STORAGE_KEY);
     if (!guardado) {
       return {
-        infoLocal: null,
+        infoLocal: undefined,
         productos: [],
         categorias: [],
       };
@@ -92,13 +92,13 @@ const leerDatosLocales = (): ShopConfigData => {
 
     const parsed = JSON.parse(guardado) as Partial<ShopConfigData>;
     return {
-      infoLocal: parsed.infoLocal ?? null,
+      infoLocal: parsed.infoLocal ?? undefined,
       productos: Array.isArray(parsed.productos) ? parsed.productos : [],
       categorias: Array.isArray(parsed.categorias) ? parsed.categorias : [],
     };
   } catch {
     return {
-      infoLocal: null,
+      infoLocal: undefined,
       productos: [],
       categorias: [],
     };
@@ -186,7 +186,7 @@ export const saveShopConfigData = async (
 
 export const guardarProductosEnFirebase = async (
   nuevosProductos: Producto[],
-  infoLocal: Partial<InfoLocal> | null,
+  infoLocal: Partial<InfoLocal> | undefined,
   categorias: string[],
 ): Promise<boolean> => {
   try {

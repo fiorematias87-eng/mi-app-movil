@@ -27,8 +27,8 @@ import {
 } from '../firebase/db';
 
 interface AdminPanelProps {
-  infoLocal: Partial<InfoLocal> | null;
-  setInfoLocal: React.Dispatch<React.SetStateAction<Partial<InfoLocal> | null>>;
+  infoLocal: Partial<InfoLocal> | undefined;
+  setInfoLocal: React.Dispatch<React.SetStateAction<Partial<InfoLocal> | undefined>>;
   productos: Producto[];
   setProductos: React.Dispatch<React.SetStateAction<Producto[]>>;
   categorias: string[];
