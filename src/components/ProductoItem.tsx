@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { addDoc, collection, doc, updateDoc } from 'firebase/firestore';
 import { Camera, Edit2, Eye, EyeOff, Loader2, Trash2 } from 'lucide-react';
 import { auth, db } from '../firebase';
-import type { Producto } from '../firebase/db';
+import type { Producto } from '../types';
 
 interface ProductoItemProps {
   producto: Producto;
@@ -39,6 +39,15 @@ export default function ProductoItem({
   const [draft, setDraft] = useState<Producto>(() => crearDraft(producto));
   const [isUploading, setIsUploading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [imageCacheVersion, setImageCacheVersion] = useState(0);
+
+  const getCacheBustedUrl = (url?: string) => {
+    if (!url?.trim()) return '';
+    if (url.startsWith('data:')) return url;
+    const stamp = imageCacheVersion > 0 ? imageCacheVersion : Date.now();
+    const separator = url.includes('?') ? '&' : '?';
+    return `${url}${separator}t=${stamp}`;
+  };
 
   useEffect(() => {
     setDraft(crearDraft(producto));
@@ -108,6 +117,7 @@ export default function ProductoItem({
       await updateDoc(doc(db, 'productos', idParaSubir), { imagen: urlNube });
       const productoActualizado: Producto = { ...draft, id: idParaSubir, imagen: urlNube };
       setDraft(productoActualizado);
+      setImageCacheVersion((prev) => prev + 1);
       onProductUpdated?.(productoActualizado);
     } catch (error) {
       console.error('Error al subir la imagen del producto:', error);
@@ -129,7 +139,7 @@ export default function ProductoItem({
         descripcion: draft.descripcion.trim(),
         precio: Number(draft.precio),
         categoria: draft.categoria.trim(),
-        imagen: draft.imagen.trim() || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?q=80&w=500',
+        imagen: draft.imagen?.trim() || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?q=80&w=500',
         activo: draft.activo ?? false,
       };
 
@@ -146,15 +156,17 @@ export default function ProductoItem({
     }
   };
 
+  const isPaused = draft.activo ?? false;
+
   return (
-    <div className={`rounded-xl border p-2.5 transition-colors ${!draft.activo ? 'border-neutral-800 bg-neutral-900/60' : 'border-neutral-900 bg-neutral-950/40 opacity-70'}`}>
+    <div className={`rounded-xl border p-2.5 transition-colors ${!isPaused ? 'border-neutral-800 bg-neutral-900/60' : 'border-neutral-900 bg-neutral-950/40 opacity-70'}`}>
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 truncate">
-          <img src={draft.imagen || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?q=80&w=500'} className="h-10 w-10 rounded-lg object-cover flex-shrink-0" alt={draft.nombre || 'Producto'} />
+          <img src={getCacheBustedUrl(draft.imagen?.trim() || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?q=80&w=500')} className="h-10 w-10 rounded-lg object-cover flex-shrink-0" alt={draft.nombre || 'Producto'} />
           <div className="truncate">
             <p className="truncate font-bold text-white">
               {draft.nombre || 'Sin nombre'}
-              {draft.activo === true && <span className="ml-1 rounded bg-red-500/20 px-1 text-[9px] font-medium text-red-400">Pausado</span>}
+              {isPaused === true && <span className="ml-1 rounded bg-red-500/20 px-1 text-[9px] font-medium text-red-400">Pausado</span>}
             </p>
             <p className="text-[10px] font-black text-yellow-500">${Number(draft.precio || 0).toLocaleString('es-AR')}</p>
           </div>
@@ -164,10 +176,10 @@ export default function ProductoItem({
           <button
             type="button"
             onClick={() => void onToggleHidden(draft.id || producto.id)}
-            className={`rounded-lg p-2 transition-transform duration-100 ease-in-out active:scale-95 active:opacity-90 ${!draft.activo ? 'bg-emerald-950/40 text-emerald-400' : 'bg-red-950/40 text-red-400'}`}
+            className={`rounded-lg p-2 transition-transform duration-100 ease-in-out active:scale-95 active:opacity-90 ${!isPaused ? 'bg-emerald-950/40 text-emerald-400' : 'bg-red-950/40 text-red-400'}`}
             disabled={disabled}
           >
-            {!draft.activo ? <Eye size={12} /> : <EyeOff size={12} />}
+            {!isPaused ? <Eye size={12} /> : <EyeOff size={12} />}
           </button>
           <button
             type="button"

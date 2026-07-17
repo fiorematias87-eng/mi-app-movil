@@ -1,6 +1,6 @@
 // src/views/client/HomeCliente.tsx
 import React, { useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
-import { doc, onSnapshot, updateDoc, setDoc } from 'firebase/firestore';
+import { collection, doc, onSnapshot, updateDoc, setDoc } from 'firebase/firestore';
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { ShoppingCart, Star, Minus, Plus, X, MapPin, Search, Trash2, ExternalLink, MessageSquare, ShoppingBag, Lock } from 'lucide-react';
 import AdminPanel from '../../components/AdminPanel';
@@ -89,6 +89,16 @@ export default function HomeCliente({ productos, infoLocal, categorias }: HomeCl
   const [metodoPago, setMetodoPago] = useState<MetodoPago>('efectivo');
   const [pagaCon, setPagaCon] = useState<string>('');
   const [categoriaActiva, setCategoriaActiva] = useState<string>('pizzas');
+  const [infoLocalCacheVersion, setInfoLocalCacheVersion] = useState(0);
+  const [productosCacheVersion, setProductosCacheVersion] = useState(0);
+
+  const getCacheBustedUrl = (url: string, version: number) => {
+    if (!url?.trim()) return '';
+    if (url.startsWith('data:')) return url;
+    const stamp = version > 0 ? version : Date.now();
+    const separator = url.includes('?') ? '&' : '?';
+    return `${url}${separator}t=${stamp}`;
+  };
 
   const infoLocalValues: InfoLocal = {
     nombre: infoLocalState?.nombre ?? '',
@@ -107,6 +117,20 @@ export default function HomeCliente({ productos, infoLocal, categorias }: HomeCl
   const perfilVacio = !infoLocalState;
 
   useEffect(() => {
+    setInfoLocalState(infoLocal ?? null);
+    setProductosState(
+      Array.isArray(productos)
+        ? productos.map((producto) => ({
+            ...producto,
+            activo: producto.activo ?? false,
+            hidden: producto.hidden === true,
+          }))
+        : []
+    );
+    setCategoriasState(Array.isArray(categorias) ? categorias : []);
+  }, [infoLocal, productos, categorias]);
+
+  useEffect(() => {
     if (categoriasState.length > 0 && !categoriasState.includes(categoriaActiva)) {
       setCategoriaActiva(categoriasState[0]);
     }
@@ -119,26 +143,24 @@ export default function HomeCliente({ productos, infoLocal, categorias }: HomeCl
     const aplicarDatosDesdeFirestore = (data: ShopConfigDataState | null | undefined) => {
       if (!activo) return;
 
-      if (!data) {
-        setInfoLocalState(null);
-        setProductosState([]);
-        setCategoriasState([]);
-        setLoadingDatos(false);
-        return;
-      }
-
-      if (data.infoLocal) {
+      if (data?.infoLocal) {
         setInfoLocalState(data.infoLocal);
       } else {
         setInfoLocalState(null);
       }
+      setInfoLocalCacheVersion((prev) => prev + 1);
 
-      setProductosState(
-        Array.isArray(data.productos)
-          ? data.productos.map((producto) => ({ ...producto, hidden: producto.hidden === true }))
-          : []
-      );
-      setCategoriasState(Array.isArray(data.categorias) ? data.categorias : []);
+      const productosActualizados = Array.isArray(data?.productos)
+        ? data.productos.map((producto) => ({
+            ...producto,
+            activo: producto.activo ?? false,
+            hidden: producto.hidden === true,
+          }))
+        : [];
+
+      setProductosState(productosActualizados);
+      setProductosCacheVersion((prev) => prev + 1);
+      setCategoriasState(Array.isArray(data?.categorias) ? data.categorias : []);
       setErrorDatos(null);
       setLoadingDatos(false);
     };
@@ -181,6 +203,46 @@ export default function HomeCliente({ productos, infoLocal, categorias }: HomeCl
         console.error('Error al escuchar cambios en Firestore:', error);
         if (activo) {
           setErrorDatos('Se perdió la conexión con la base de datos en tiempo real.');
+        }
+      }
+    );
+
+    return () => {
+      activo = false;
+      unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    let activo = true;
+    const productosRef = collection(db, 'productos');
+
+    const unsubscribe = onSnapshot(
+      productosRef,
+      (snapshot) => {
+        if (!activo) return;
+
+        const productosActualizados = snapshot.docs.map((docSnap) => {
+          const data = docSnap.data() as Partial<Producto> & { id?: string };
+          return {
+            id: docSnap.id,
+            nombre: data.nombre ?? '',
+            descripcion: data.descripcion ?? '',
+            precio: Number(data.precio ?? 0),
+            categoria: data.categoria ?? '',
+            imagen: data.imagen ?? '',
+            activo: data.activo ?? false,
+            hidden: data.hidden === true,
+          } as Producto;
+        });
+
+        setProductosState(productosActualizados);
+        setProductosCacheVersion((prev) => prev + 1);
+      },
+      (error) => {
+        console.error('Error al escuchar cambios en productos:', error);
+        if (activo) {
+          setErrorDatos('Se perdió la conexión para actualizar los productos.');
         }
       }
     );
@@ -491,7 +553,7 @@ export default function HomeCliente({ productos, infoLocal, categorias }: HomeCl
 
       {vistaActual === 'menu' && (
         <>
-          <div className="h-44 bg-cover bg-center relative" style={infoLocalValues.portadaUrl ? { backgroundImage: `url(${infoLocalValues.portadaUrl})` } : undefined}>
+          <div className="h-44 bg-cover bg-center relative" style={infoLocalValues.portadaUrl ? { backgroundImage: `url(${getCacheBustedUrl(infoLocalValues.portadaUrl, infoLocalCacheVersion)})` } : undefined}>
             <div className="absolute inset-0 bg-black/30" />
             {!infoLocalValues.portadaUrl && (
               <div className="absolute inset-0 bg-neutral-950/80 flex items-center justify-center text-xs text-neutral-400">
@@ -501,7 +563,7 @@ export default function HomeCliente({ productos, infoLocal, categorias }: HomeCl
           </div>
           <div className="px-4 -mt-14 relative flex flex-col items-center text-center mb-2">
             {infoLocalValues.avatarUrl ? (
-              <img src={infoLocalValues.avatarUrl} alt="Logo" className="w-24 h-24 rounded-full border-4 border-sky-400 object-cover shadow-xl bg-neutral-900" />
+              <img src={getCacheBustedUrl(infoLocalValues.avatarUrl, infoLocalCacheVersion)} alt="Logo" className="w-24 h-24 rounded-full border-4 border-sky-400 object-cover shadow-xl bg-neutral-900" />
             ) : (
               <div className="w-24 h-24 rounded-full border-4 border-dashed border-neutral-700 bg-neutral-950 flex items-center justify-center text-xs text-neutral-400 shadow-xl">
                 Sin logo
@@ -552,7 +614,7 @@ export default function HomeCliente({ productos, infoLocal, categorias }: HomeCl
             ) : (
               productosFiltradosCliente.map((producto) => (
                 <div key={producto.id} className="bg-neutral-800/80 p-3 rounded-2xl shadow-md hover:shadow-lg transition-shadow duration-100 ease-in-out active:scale-95 active:shadow-lg border border-neutral-700/30 hover:border-sky-500/20 items-center justify-between flex gap-3">
-                  <img src={producto.imagen} alt={producto.nombre} className="w-20 h-20 rounded-xl object-cover bg-neutral-700 flex-shrink-0" />
+                  <img src={getCacheBustedUrl(producto.imagen, productosCacheVersion)} alt={producto.nombre} className="w-20 h-20 rounded-xl object-cover bg-neutral-700 flex-shrink-0" />
                   <div className="flex-1 min-w-0">
                     <h3 className="font-bold text-white text-base truncate">{producto.nombre}</h3>
                     <p className="text-xs text-neutral-400 line-clamp-2 mt-0.5">{producto.descripcion}</p>

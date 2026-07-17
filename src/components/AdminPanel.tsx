@@ -90,6 +90,14 @@ export default function AdminPanel({
   const [suscripcionCargando, setSuscripcionCargando] = useState(true);
   const [errorSuscripcion, setErrorSuscripcion] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
+  const [imageCacheVersion, setImageCacheVersion] = useState(0);
+
+  const getCacheBustedUrl = (url?: string) => {
+    if (!url) return '';
+    const stamp = imageCacheVersion || Date.now();
+    const separator = url.includes('?') ? '&' : '?';
+    return `${url}${separator}t=${stamp}`;
+  };
 
   useEffect(() => {
     let activo = true;
@@ -392,7 +400,7 @@ export default function AdminPanel({
             <div className="flex flex-col items-center justify-center p-3 bg-neutral-900/80 rounded-xl border border-neutral-800 text-center">
               <span className="text-[10px] text-neutral-400 font-bold mb-2">Foto Portada</span>
               {infoLocalValues.portadaUrl ? (
-                <img src={infoLocalValues.portadaUrl} className="w-full h-16 rounded-md object-cover opacity-60 mb-2" alt="Portada" />
+                <img src={getCacheBustedUrl(infoLocalValues.portadaUrl)} className="w-full h-16 rounded-md object-cover opacity-60 mb-2" alt="Portada" />
               ) : (
                 <div className="w-full h-16 rounded-md border border-dashed border-neutral-700 bg-neutral-950/70 flex items-center justify-center text-[10px] text-neutral-500 mb-2">
                   No hay imagen de portada cargada
@@ -406,7 +414,7 @@ export default function AdminPanel({
             <div className="flex flex-col items-center justify-center p-3 bg-neutral-900/80 rounded-xl border border-neutral-800 text-center">
               <span className="text-[10px] text-neutral-400 font-bold mb-2">Logo / Perfil</span>
               {infoLocalValues.avatarUrl ? (
-                <img src={infoLocalValues.avatarUrl} className="w-12 h-12 rounded-full object-cover border border-sky-400/30 mb-2" alt="Logo" />
+                <img src={getCacheBustedUrl(infoLocalValues.avatarUrl)} className="w-12 h-12 rounded-full object-cover border border-sky-400/30 mb-2" alt="Logo" />
               ) : (
                 <div className="w-12 h-12 rounded-full border border-dashed border-neutral-700 bg-neutral-950/70 mb-2 flex items-center justify-center text-[10px] text-neutral-500">
                   Sin logo
@@ -511,7 +519,7 @@ export default function AdminPanel({
                 productosFiltradosAdmin.map((p) => (
                   <div key={p.id} className={`flex items-center justify-between p-2 rounded-xl border text-xs transition-colors ${!p.hidden ? 'bg-neutral-900/60 border-neutral-800' : 'bg-neutral-950/40 border-neutral-900 opacity-60'}`}>
                     <div className="flex items-center gap-2 truncate">
-                      <img src={p.imagen} className="w-10 h-10 rounded-lg object-cover flex-shrink-0" alt="" />
+                      <img src={getCacheBustedUrl(p.imagen)} className="w-10 h-10 rounded-lg object-cover flex-shrink-0" alt="" />
                       <div className="truncate">
                         <p className="font-bold text-white truncate flex items-center gap-1">
                           {p.nombre}
