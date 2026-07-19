@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import HomeCliente from './views/client/HomeCliente';
 import EsqueletoCarga from './components/EsqueletoCarga';
-import { suscribirProductos } from './firebase/db';
+import { suscribirProductos } from './db';
 import type { Producto, InfoLocal } from './types';
 
 export default function App() {

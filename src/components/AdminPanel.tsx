@@ -1,6 +1,4 @@
 import React, { useEffect, useState } from 'react';
-import { addDoc, collection, doc, updateDoc, deleteDoc, setDoc, type DocumentData } from 'firebase/firestore';
-import { db } from '../firebase';
 import {
   ShoppingBag,
   DollarSign,
@@ -21,10 +19,14 @@ import {
 import {
   guardarProductosEnFirebase,
   saveShopConfigData,
+  crearProducto,
+  actualizarProducto,
+  eliminarProducto,
   type InfoLocal,
   type Producto,
   verificarSuscripcion,
-} from '../firebase/db';
+} from '../db';
+import { supabase } from '../supabase';
 
 interface AdminPanelProps {
   infoLocal: Partial<InfoLocal> | null | undefined;
@@ -91,6 +93,73 @@ export default function AdminPanel({
   const [errorSuscripcion, setErrorSuscripcion] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
   const [imageCacheVersion, setImageCacheVersion] = useState(0);
+  const [esAdmin, setEsAdmin] = useState(false);
+  const [cargando, setCargando] = useState(true);
+
+  useEffect(() => {
+    let activo = true;
+
+    const verificarAdmin = async () => {
+      try {
+        const {
+          data: { user },
+          error: errorUser,
+        } = await supabase.auth.getUser();
+
+        if (errorUser) {
+          throw errorUser;
+        }
+
+        if (!user) {
+          if (activo) {
+            setEsAdmin(false);
+          }
+          return;
+        }
+
+        const { data, error } = await supabase
+          .from('perfiles')
+          .select('rol')
+          .eq('id', user.id)
+          .maybeSingle();
+
+        if (error) {
+          throw error;
+        }
+
+        if (activo) {
+          setEsAdmin(data?.rol === 'admin');
+        }
+      } catch (error) {
+        console.error('Error verificando permisos de administrador:', error);
+        if (activo) {
+          setEsAdmin(false);
+        }
+      } finally {
+        if (activo) {
+          setCargando(false);
+        }
+      }
+    };
+
+    void verificarAdmin();
+
+    return () => {
+      activo = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    console.log('AdminPanel montado', {
+      infoLocal,
+      productosLength: productos.length,
+      categoriasLength: categorias.length,
+    });
+
+    if (!infoLocal) {
+      console.warn('AdminPanel: infoLocal es null o undefined al montar el componente');
+    }
+  }, []);
 
   const getCacheBustedUrl = (url?: string) => {
     if (!url) return '';
@@ -142,29 +211,18 @@ export default function AdminPanel({
 
   // Escritura por producto: persistir en Firestore primero, luego actualizar estado local
   const actualizarProductoEnFirestore = async (id: string, cambios: Partial<Producto>) => {
-
     try {
-      // Intentar updateDoc primero
-      await updateDoc(doc(db, 'productos', id), cambios as Partial<DocumentData>);
-      // Si tuvo éxito, actualizar estado local para reflejar Firestore
-      setProductos((prevP) => prevP.map((p) => (p.id === id ? { ...p, ...cambios } : p)));
-      return true;
-    } catch (error) {
-      console.warn('updateDoc falló, intentando setDoc como fallback:', error);
-      // Intentar crear/mergear el documento si no existía
-      try {
-        const viejo = productos.find((p) => p.id === id) as Partial<Producto> | undefined;
-        const toWrite = { ...(viejo ?? {}), ...cambios } as Partial<DocumentData>;
-        await setDoc(doc(db, 'productos', id), toWrite, { merge: true });
-        // Solo actualizar estado local si setDoc tuvo éxito
-        setProductos((prevP) => prevP.map((p) => (p.id === id ? { ...p, ...cambios } : p)));
-        return true;
-      } catch (err2) {
-        console.error('Error alternativo al escribir producto en Firestore:', err2);
-        // No cambiar el estado local: mantener prev
+      const ok = await actualizarProducto(id, cambios);
+      if (!ok) {
         alert('No se pudo guardar el cambio. Revisa la conexión e intenta nuevamente.');
         return false;
       }
+      setProductos((prevP) => prevP.map((p) => (p.id === id ? { ...p, ...cambios } : p)));
+      return true;
+    } catch (error) {
+      console.error('Error actualizando producto en Supabase:', error);
+      alert('No se pudo guardar el cambio. Revisa la conexión e intenta nuevamente.');
+      return false;
     }
   };
 
@@ -204,11 +262,10 @@ export default function AdminPanel({
       if (!ok) return;
     } else {
       try {
-        const ref = await addDoc(collection(db, 'productos'), campos as Partial<DocumentData>);
-        const nuevoProd: Producto = { id: ref.id, ...(campos as Omit<Producto, 'id'>) } as Producto;
+        const nuevoProd = await crearProducto(campos as Omit<Producto, 'id'>);
         setProductos((prev) => [...prev, nuevoProd]);
       } catch (error) {
-        console.error('Error creando producto en Firestore:', error);
+        console.error('Error creando producto en Supabase:', error);
         alert('No se pudo crear el producto. Verifica la conexión e intenta nuevamente.');
         setGuardando(false);
         return;
@@ -228,26 +285,21 @@ export default function AdminPanel({
     if (!producto) return;
     const nuevoEstado = producto.hidden === true ? false : true;
 
-    try {
-      // Persistir primero en Firestore
-      await updateDoc(doc(db, 'productos', id), { hidden: nuevoEstado } as Partial<DocumentData>);
-      // Solo después de confirmación, actualizar estado local para reflejar Firestore
+    const ok = await actualizarProducto(id, { hidden: nuevoEstado });
+    if (ok) {
       setProductos((prev) => prev.map((p) => (p.id === id ? { ...p, hidden: nuevoEstado } : p)));
-    } catch (error) {
-      console.error('Error actualizando hidden en Firestore:', error);
+    } else {
       alert('No se pudo actualizar el estado en la base. Revisa la conexión e intenta nuevamente.');
-      // No cambiar el estado local: la UI seguirá mostrando el estado actual en Firestore
     }
   };
 
   const handleEliminarProducto = async (id: string) => {
     if (!window.confirm('¿Eliminar este producto?')) return;
 
-    try {
-      await deleteDoc(doc(db, 'productos', id));
+    const ok = await eliminarProducto(id);
+    if (ok) {
       setProductos((p) => p.filter((x) => x.id !== id));
-    } catch (error) {
-      console.error('Error eliminando producto en Firestore:', error);
+    } else {
       alert('No se pudo eliminar el producto. Intenta nuevamente.');
     }
   };
@@ -261,24 +313,34 @@ export default function AdminPanel({
     }
 
     const nuevasCategorias = [...categorias, nombre];
-    const ok = await guardarProductosEnFirebase(productos, infoLocal, nuevasCategorias);
-    if (!ok) {
-      alert('No se pudo guardar la nueva sección. Intenta nuevamente.');
-      return;
+    try {
+      const ok = await guardarProductosEnFirebase(productos, infoLocal ?? undefined, nuevasCategorias);
+      if (!ok) {
+        alert('No se pudo guardar la nueva sección. Intenta nuevamente.');
+        return;
+      }
+      setCategorias(nuevasCategorias);
+      setNuevaCat('');
+    } catch (error) {
+      console.error('Error guardar nueva categoría:', error);
+      alert('Error al guardar la nueva categoría. Revisa la conexión e intenta nuevamente.');
     }
-    setCategorias(nuevasCategorias);
-    setNuevaCat('');
   };
 
   const handleEliminarCategoria = async (categoria: string) => {
     if (!window.confirm(`¿Borrar la sección "${categoria}"?`)) return;
     const nuevasCategorias = categorias.filter((c) => c !== categoria);
-    const ok = await guardarProductosEnFirebase(productos, infoLocal, nuevasCategorias);
-    if (!ok) {
-      alert('No se pudo eliminar la sección. Intenta nuevamente.');
-      return;
+    try {
+      const ok = await guardarProductosEnFirebase(productos, infoLocal ?? undefined, nuevasCategorias);
+      if (!ok) {
+        alert('No se pudo eliminar la sección. Intenta nuevamente.');
+        return;
+      }
+      setCategorias(nuevasCategorias);
+    } catch (error) {
+      console.error('Error eliminando categoría:', error);
+      alert('Error al eliminar la categoría. Revisa la conexión e intenta nuevamente.');
     }
-    setCategorias(nuevasCategorias);
   };
 
   // Seed action removed from admin UI to avoid accidental overwrites.
@@ -301,7 +363,7 @@ export default function AdminPanel({
 
     if (!productoId) {
       try {
-        const refDoc = await addDoc(collection(db, 'productos'), {
+        const nuevoProducto = await crearProducto({
           nombre: '',
           descripcion: '',
           precio: 0,
@@ -309,8 +371,9 @@ export default function AdminPanel({
           imagen: '',
           hidden: false,
         });
-        productoId = refDoc.id;
-        setEditandoProductoId(refDoc.id);
+        productoId = nuevoProducto.id;
+        setEditandoProductoId(nuevoProducto.id);
+        setProductos((prev) => [...prev, nuevoProducto]);
       } catch (error) {
         console.error('No se pudo crear un registro temporal del producto:', error);
         alert('No se pudo preparar el producto para subir la imagen.');
@@ -318,16 +381,37 @@ export default function AdminPanel({
       }
     }
 
-    const url = await onFileChange(event, 'producto', productoId ?? undefined);
+    const url = await onFileChange(event, 'producto', productoId);
     if (url) {
       setProductoImageUrl(url);
       setProdForm((prev) => ({ ...prev, imagen: url }));
+      await actualizarProducto(productoId, { imagen: url });
     }
   };
 
   const handlePerfilImageUpload = async (event: React.ChangeEvent<HTMLInputElement>, tipo: 'portada' | 'avatar') => {
     await onFileChange(event, tipo);
   };
+
+  if (cargando) {
+    return (
+      <div className="p-4">
+        <div className="rounded-xl border border-sky-500/20 bg-sky-500/10 px-3 py-3 text-sm text-sky-300">
+          Cargando panel...
+        </div>
+      </div>
+    );
+  }
+
+  if (!esAdmin) {
+    return (
+      <div className="p-4">
+        <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-3 text-sm text-red-300">
+          Acceso denegado: No tienes permisos de administrador.
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-4 space-y-4">

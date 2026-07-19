@@ -1,11 +1,9 @@
 // src/views/client/HomeCliente.tsx
 import React, { useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
-import { collection, doc, onSnapshot, updateDoc, setDoc } from 'firebase/firestore';
-import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { ShoppingCart, Star, Minus, Plus, X, MapPin, Search, Trash2, ExternalLink, MessageSquare, ShoppingBag, Lock } from 'lucide-react';
 import AdminPanel from '../../components/AdminPanel';
-import { db, auth } from '../../firebase/config';
-import { getShopConfigData } from '../../firebase/db';
+import { supabase } from '../../supabase';
+import { saveShopConfigData } from '../../db';
 import type { Producto, InfoLocal } from '../../types';
 
 interface ItemDelCarrito {
@@ -136,132 +134,23 @@ export default function HomeCliente({ productos, infoLocal, categorias }: HomeCl
     }
   }, [categoriasState, categoriaActiva]);
 
-  useEffect(() => {
-    let activo = true;
-    const docRef = doc(db, 'shop', 'config');
-
-    const aplicarDatosDesdeFirestore = (data: ShopConfigDataState | null | undefined) => {
-      if (!activo) return;
-
-      if (data?.infoLocal) {
-        setInfoLocalState(data.infoLocal);
-      } else {
-        setInfoLocalState(null);
-      }
-      setInfoLocalCacheVersion((prev) => prev + 1);
-
-      const productosActualizados = Array.isArray(data?.productos)
-        ? data.productos.map((producto) => ({
-            ...producto,
-            activo: producto.activo ?? false,
-            hidden: producto.hidden === true,
-          }))
-        : [];
-
-      setProductosState(productosActualizados);
-      setProductosCacheVersion((prev) => prev + 1);
-      setCategoriasState(Array.isArray(data?.categorias) ? data.categorias : []);
-      setErrorDatos(null);
-      setLoadingDatos(false);
-    };
-
-    const cargarDesdeNube = async () => {
-      try {
-        setLoadingDatos(true);
-        setErrorDatos(null);
-        const data = await getShopConfigData();
-
-        if (!activo) return;
-        aplicarDatosDesdeFirestore(data);
-
-      } catch (error) {
-        console.error('Error al cargar datos de Firebase:', error);
-        if (activo) {
-          setErrorDatos('No se pudieron cargar los datos desde Firebase.');
-          setInfoLocalState(null);
-          setProductosState([]);
-          setCategoriasState([]);
-          setLoadingDatos(false);
-        }
-      }
-    };
-
-    void cargarDesdeNube();
-
-    const unsubscribe = onSnapshot(
-      docRef,
-      (snapshot) => {
-        if (!activo) return;
-        if (snapshot.exists()) {
-          const data = snapshot.data() as ShopConfigDataState | undefined;
-          aplicarDatosDesdeFirestore(data);
-        } else {
-          aplicarDatosDesdeFirestore(null);
-        }
-      },
-      (error) => {
-        console.error('Error al escuchar cambios en Firestore:', error);
-        if (activo) {
-          setErrorDatos('Se perdió la conexión con la base de datos en tiempo real.');
-        }
-      }
-    );
-
-    return () => {
-      activo = false;
-      unsubscribe();
-    };
-  }, []);
+  // El estado se actualiza desde App mediante la suscripción global de Supabase.
 
   useEffect(() => {
-    let activo = true;
-    const productosRef = collection(db, 'productos');
-
-    const unsubscribe = onSnapshot(
-      productosRef,
-      (snapshot) => {
-        if (!activo) return;
-
-        const productosActualizados = snapshot.docs.map((docSnap) => {
-          const data = docSnap.data() as Partial<Producto> & { id?: string };
-          return {
-            id: docSnap.id,
-            nombre: data.nombre ?? '',
-            descripcion: data.descripcion ?? '',
-            precio: Number(data.precio ?? 0),
-            categoria: data.categoria ?? '',
-            imagen: data.imagen ?? '',
-            activo: data.activo ?? false,
-            hidden: data.hidden === true,
-          } as Producto;
-        });
-
-        setProductosState(productosActualizados);
-        setProductosCacheVersion((prev) => prev + 1);
-      },
-      (error) => {
-        console.error('Error al escuchar cambios en productos:', error);
-        if (activo) {
-          setErrorDatos('Se perdió la conexión para actualizar los productos.');
-        }
-      }
-    );
-
-    return () => {
-      activo = false;
-      unsubscribe();
-    };
-  }, []);
-
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setIsAdminAutenticado(Boolean(user));
-      if (!user) {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setIsAdminAutenticado(Boolean(session?.user));
+      if (!session?.user) {
         setAuthError(null);
       }
     });
 
-    return () => unsubscribe();
+    return () => {
+      if (subscription) {
+        subscription.unsubscribe();
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -302,15 +191,18 @@ export default function HomeCliente({ productos, infoLocal, categorias }: HomeCl
     });
   };
 
-  const persistirInfoLocalEnFirestore = async (campo: 'portadaUrl' | 'avatarUrl', urlNube: string) => {
-    const docRef = doc(db, 'shop', 'config');
+  const persistirInfoLocalEnSupabase = async (campo: 'portadaUrl' | 'avatarUrl', urlNube: string) => {
+    const nuevaInfoLocal = {
+      ...(infoLocalState ?? {}),
+      [campo]: urlNube,
+    };
 
-    try {
-      await updateDoc(docRef, { [`infoLocal.${campo}`]: urlNube });
-    } catch (error) {
-      console.warn('No se pudo usar updateDoc, guardando con setDoc merge:', error);
-      await setDoc(docRef, { infoLocal: { [campo]: urlNube } }, { merge: true });
-    }
+    setInfoLocalState(nuevaInfoLocal);
+    await saveShopConfigData({
+      infoLocal: nuevaInfoLocal,
+      categorias: categoriasState,
+      productos: productosState,
+    });
   };
 
   const handleFileChange = async (e: ChangeEvent<HTMLInputElement>, tipo: 'portada' | 'avatar' | 'producto') => {
@@ -353,9 +245,7 @@ export default function HomeCliente({ productos, infoLocal, categorias }: HomeCl
       }
 
       const campo = tipo === 'portada' ? 'portadaUrl' : 'avatarUrl';
-      await persistirInfoLocalEnFirestore(campo, urlNube);
-      setInfoLocalState((prev: Partial<InfoLocal> | null) => ({ ...(prev ?? {}), [campo]: urlNube }));
-
+      await persistirInfoLocalEnSupabase(campo, urlNube);
       return urlNube;
     } catch (error) {
       console.error('Error al subir la imagen:', error);
@@ -372,7 +262,13 @@ export default function HomeCliente({ productos, infoLocal, categorias }: HomeCl
     setAuthError(null);
 
     try {
-      await signInWithEmailAndPassword(auth, adminEmail.trim(), adminPassword);
+      const { error } = await supabase.auth.signInWithPassword({
+        email: adminEmail.trim(),
+        password: adminPassword,
+      });
+      if (error) {
+        throw error;
+      }
       setAdminEmail('');
       setAdminPassword('');
       setIsAdminAutenticado(true);
@@ -397,7 +293,7 @@ export default function HomeCliente({ productos, infoLocal, categorias }: HomeCl
   const cerrarSesionAdmin = async () => {
     if (window.confirm('¿Querés cerrar sesión en este dispositivo?')) {
       try {
-        await signOut(auth);
+        await supabase.auth.signOut();
       } catch (error) {
         console.error('Error al cerrar sesión:', error);
       }

@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { addDoc, collection, doc, updateDoc } from 'firebase/firestore';
 import { Camera, Edit2, Eye, EyeOff, Loader2, Trash2 } from 'lucide-react';
-import { auth, db } from '../firebase';
+import { crearProducto, actualizarProducto } from '../db';
 import type { Producto } from '../types';
 
 interface ProductoItemProps {
@@ -60,12 +59,6 @@ export default function ProductoItem({
     const file = event.target.files?.[0];
     if (!file) return;
 
-    if (!auth.currentUser) {
-      alert('La sesión expiró. Se recargará para revalidar el acceso.');
-      window.location.reload();
-      return;
-    }
-
     const productId = draft.id || producto.id;
 
     try {
@@ -73,7 +66,7 @@ export default function ProductoItem({
 
       let idParaSubir = productId;
       if (!idParaSubir) {
-        const tempRef = await addDoc(collection(db, 'productos'), {
+        const nuevoProducto = await crearProducto({
           nombre: draft.nombre.trim() || 'Nuevo producto',
           descripcion: draft.descripcion.trim(),
           precio: Number(draft.precio) || 0,
@@ -81,8 +74,8 @@ export default function ProductoItem({
           imagen: '',
           activo: draft.activo ?? false,
         });
-        idParaSubir = tempRef.id;
-        setDraft((prev) => ({ ...prev, id: tempRef.id }));
+        idParaSubir = nuevoProducto.id;
+        setDraft((prev) => ({ ...prev, id: nuevoProducto.id }));
       }
 
       // Preparar datos para Cloudinary
@@ -113,8 +106,7 @@ export default function ProductoItem({
       const cloudinaryData = (await cloudinaryResponse.json()) as { secure_url: string };
       const urlNube = cloudinaryData.secure_url;
 
-      // Guardar URL en Firestore
-      await updateDoc(doc(db, 'productos', idParaSubir), { imagen: urlNube });
+      await actualizarProducto(idParaSubir, { imagen: urlNube });
       const productoActualizado: Producto = { ...draft, id: idParaSubir, imagen: urlNube };
       setDraft(productoActualizado);
       setImageCacheVersion((prev) => prev + 1);
