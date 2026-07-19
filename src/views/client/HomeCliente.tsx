@@ -134,6 +134,89 @@ export default function HomeCliente({ productos, infoLocal, categorias }: HomeCl
     }
   }, [categoriasState, categoriaActiva]);
 
+  useEffect(() => {
+    const channel = supabase
+      .channel('shop_realtime_channel')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'productos' },
+        (payload) => {
+          const nuevoProducto = payload.new as Producto | undefined;
+          const productoAnterior = payload.old as Producto | undefined;
+
+          if (payload.eventType === 'INSERT' && nuevoProducto) {
+            setProductosState((prev) => {
+              if (prev.some((producto) => producto.id === nuevoProducto.id)) {
+                return prev;
+              }
+              return [...prev, {
+                ...nuevoProducto,
+                activo: nuevoProducto.activo ?? false,
+                hidden: nuevoProducto.hidden === true,
+              }];
+            });
+            return;
+          }
+
+          if (payload.eventType === 'UPDATE' && nuevoProducto) {
+            setProductosState((prev) => prev.map((producto) => {
+              if (producto.id !== nuevoProducto.id) {
+                return producto;
+              }
+
+              return {
+                ...producto,
+                ...nuevoProducto,
+                activo: nuevoProducto.activo ?? producto.activo ?? false,
+                hidden: nuevoProducto.hidden === true,
+              };
+            }));
+            return;
+          }
+
+          if (payload.eventType === 'DELETE' && productoAnterior) {
+            setProductosState((prev) => prev.filter((producto) => producto.id !== productoAnterior.id));
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'shop_config' },
+        (payload) => {
+          const configNueva = payload.new as { info_local?: Partial<InfoLocal>; categorias?: string[] } | undefined;
+          const configAnterior = payload.old as { info_local?: Partial<InfoLocal>; categorias?: string[] } | undefined;
+
+          if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+            if (configNueva?.info_local) {
+              setInfoLocalState((prev) => ({ ...(prev ?? {}), ...configNueva.info_local }));
+            }
+
+            if (Array.isArray(configNueva?.categorias)) {
+              setCategoriasState(configNueva.categorias);
+              setCategoriaActiva((prev) => (configNueva.categorias!.includes(prev) ? prev : configNueva.categorias![0] ?? 'pizzas'));
+            }
+            return;
+          }
+
+          if (payload.eventType === 'DELETE' && configAnterior) {
+            if (configAnterior.info_local) {
+              setInfoLocalState((prev) => ({ ...(prev ?? {}), ...configAnterior.info_local }));
+            }
+
+            if (Array.isArray(configAnterior.categorias)) {
+              setCategoriasState(configAnterior.categorias);
+              setCategoriaActiva((prev) => (configAnterior.categorias!.includes(prev) ? prev : configAnterior.categorias![0] ?? 'pizzas'));
+            }
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
   // El estado se actualiza desde App mediante la suscripción global de Supabase.
 
   useEffect(() => {
