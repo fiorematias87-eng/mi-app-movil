@@ -106,11 +106,13 @@ export default function AdminPanel({
           error: errorUser,
         } = await supabase.auth.getUser();
 
-        if (errorUser) {
-          throw errorUser;
-        }
+        if (errorUser || !user) {
+          await supabase.auth.signOut();
 
-        if (!user) {
+          if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+            window.location.href = '/login';
+          }
+
           if (activo) {
             setEsAdmin(false);
           }
@@ -121,7 +123,7 @@ export default function AdminPanel({
           .from('perfiles')
           .select('rol')
           .eq('id', user.id)
-          .maybeSingle();
+          .maybeSingle<{ rol: string | null }>();
 
         if (error) {
           throw error;
@@ -132,6 +134,17 @@ export default function AdminPanel({
         }
       } catch (error) {
         console.error('Error verificando permisos de administrador:', error);
+
+        try {
+          await supabase.auth.signOut();
+        } catch (signOutError) {
+          console.warn('No se pudo cerrar la sesión tras el error de autenticación:', signOutError);
+        }
+
+        if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+          window.location.href = '/login';
+        }
+
         if (activo) {
           setEsAdmin(false);
         }
@@ -623,7 +636,7 @@ export default function AdminPanel({
                 ))
               )}
             </div>
-            <div className="border-t border-neutral-800/50 pt-3">sa 
+            <div className="border-t border-neutral-800/50 pt-3">
               <div className="text-[10px] text-neutral-500 text-center">Seed deshabilitado en producción para proteger datos del negocio.</div>
             </div>
           </div>

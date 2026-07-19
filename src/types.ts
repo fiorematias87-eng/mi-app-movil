@@ -35,6 +35,11 @@ export interface ShopConfigRow {
   info_local: InfoLocal;
 }
 
+export interface PerfilRow {
+  id: string;
+  rol: string | null;
+}
+
 export interface Database {
   public: {
     Tables: {
@@ -47,6 +52,11 @@ export interface Database {
         Row: ShopConfigRow;
         Insert: Omit<ShopConfigRow, 'id'>;
         Update: Partial<ShopConfigRow>;
+      };
+      perfiles: {
+        Row: PerfilRow;
+        Insert: Omit<PerfilRow, 'id'> & { id: string };
+        Update: Partial<PerfilRow>;
       };
     };
     Views: {};
