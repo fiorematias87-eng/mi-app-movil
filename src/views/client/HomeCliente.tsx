@@ -115,6 +115,7 @@ export default function HomeCliente({ productos, infoLocal, categorias }: HomeCl
       }
     };
 
+    // Only attempt to load after tenant resolved (negocioId present)
     void cargarProductosPorNegocio();
   }, [negocioId]);
 

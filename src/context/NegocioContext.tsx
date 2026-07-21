@@ -1,74 +1,98 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useMemo } from 'react';
 import { supabase } from '../supabase';
 
 interface NegocioContextType {
-  negocioId: string;
-  negocioNombre: string;
+  negocioId: string | null;
+  negocioNombre: string | null;
   loading: boolean;
+  error: string | null;
 }
 
 const NegocioContext = createContext<NegocioContextType | undefined>(undefined);
 
 export const NegocioProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [negocioId, setNegocioId] = useState<string>('');
-  const [negocioNombre, setNegocioNombre] = useState<string>('');
+  const [negocioId, setNegocioId] = useState<string | null>(null);
+  const [negocioNombre, setNegocioNombre] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const identificarNegocio = async () => {
+    let mounted = true;
+
+    const detectarNegocioPorSubdominio = async () => {
       try {
-        const hostname = window.location.hostname;
+        const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
         const partes = hostname.split('.');
 
         let subdominioBuscado = '';
 
-        if (partes.length > 2) {
-          subdominioBuscado = partes[0];
+        if (!hostname || hostname.includes('localhost') || partes.length < 2) {
+          subdominioBuscado = 'apppedidosnuevolocal';
         } else {
-          subdominioBuscado = 'pedidos-lodefiore';
+          subdominioBuscado = partes[0].toLowerCase();
         }
 
-        const { data, error } = await supabase
-          .from('negocios')
-          .select('id, nombre, subdominio')
-          .eq('subdominio', subdominioBuscado)
-          .single();
-
-        if (error || !data) {
-          console.error('No se encontró un negocio para este subdominio:', subdominioBuscado);
-          const { data: defaultData, error: defaultError } = await supabase
-            .from('negocios')
-            .select('id, nombre')
-            .limit(1)
-            .single();
-
-          if (!defaultError && defaultData) {
-            setNegocioId(defaultData.id);
-            setNegocioNombre(defaultData.nombre);
+        if (!/^[a-z0-9-]{1,63}$/.test(subdominioBuscado)) {
+          if (mounted) {
+            setError('invalid_subdomain');
+            setLoading(false);
           }
-        } else {
-          setNegocioId(data.id);
-          setNegocioNombre(data.nombre);
+          return;
         }
-      } catch (err) {
-        console.error('Error identificando el negocio:', err);
+
+        const cacheKey = `tenant_cache_${subdominioBuscado}`;
+        const cached = typeof window !== 'undefined' ? window.sessionStorage.getItem(cacheKey) : null;
+        if (cached) {
+          try {
+            const parsed = JSON.parse(cached) as { id: string; nombre: string } | null;
+            if (parsed && mounted) {
+              setNegocioId(parsed.id);
+              setNegocioNombre(parsed.nombre);
+              setLoading(false);
+              return;
+            }
+          } catch {}
+        }
+
+        const res = await supabase
+          .from('negocios')
+          .select('id, nombre')
+          .eq('subdominio', subdominioBuscado)
+          .maybeSingle();
+
+        if (res.error || !res.data) {
+          if (mounted) {
+            setError('tenant_not_found');
+            setLoading(false);
+          }
+          return;
+        }
+
+        if (mounted) {
+          const negocio = res.data as { id: string; nombre: string };
+          setNegocioId(negocio.id);
+          setNegocioNombre(negocio.nombre);
+          try {
+            window.sessionStorage.setItem(cacheKey, JSON.stringify({ id: negocio.id, nombre: negocio.nombre }));
+          } catch {}
+        }
+      } catch (err: any) {
+        if (mounted) setError(err?.message ?? 'unknown_error');
       } finally {
-        setLoading(false);
+        if (mounted) setLoading(false);
       }
     };
 
-    identificarNegocio();
+    void detectarNegocioPorSubdominio();
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
-  if (loading) {
-    return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>Cargando local...</div>;
-  }
+  const value = useMemo(() => ({ negocioId, negocioNombre, loading, error }), [negocioId, negocioNombre, loading, error]);
 
-  return (
-    <NegocioContext.Provider value={{ negocioId, negocioNombre, loading }}>
-      {children}
-    </NegocioContext.Provider>
-  );
+  return <NegocioContext.Provider value={value}>{children}</NegocioContext.Provider>;
 };
 
 export const useNegocio = () => {
