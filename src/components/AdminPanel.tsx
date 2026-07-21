@@ -27,7 +27,7 @@ import {
   verificarSuscripcion,
 } from '../db';
 import { supabase } from '../supabase';
-import { useNegocio } from '../NegocioContext';
+import { useNegocio } from '../context/NegocioContext';
 
 interface AdminPanelProps {
   infoLocal: Partial<InfoLocal> | null | undefined;

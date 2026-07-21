@@ -2,9 +2,10 @@
 import React, { useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
 import { ShoppingCart, Star, Minus, Plus, X, MapPin, Search, Trash2, ExternalLink, MessageSquare, ShoppingBag, Lock } from 'lucide-react';
 import AdminPanel from '../../components/AdminPanel';
+import EsqueletoCarga from '../../components/EsqueletoCarga';
 import { supabase } from '../../supabase';
 import { saveShopConfigData } from '../../db';
-import { useNegocio } from '../../NegocioContext';
+import { useNegocio } from '../../context/NegocioContext';
 import type { Producto, InfoLocal } from '../../types';
 
 interface ItemDelCarrito {
@@ -90,7 +91,8 @@ export default function HomeCliente({ productos, infoLocal, categorias }: HomeCl
   const [categoriaActiva, setCategoriaActiva] = useState<string>('pizzas');
   const [infoLocalCacheVersion, setInfoLocalCacheVersion] = useState(0);
   const [productosCacheVersion, setProductosCacheVersion] = useState(0);
-  const { negocioId } = useNegocio();
+  const { negocioId, loading: negocioLoading } = useNegocio();
+  const configuracion = infoLocalState ?? undefined;
 
   useEffect(() => {
     const cargarProductosPorNegocio = async () => {
@@ -128,17 +130,17 @@ export default function HomeCliente({ productos, infoLocal, categorias }: HomeCl
   };
 
   const infoLocalValues: InfoLocal = {
-    nombre: infoLocalState?.nombre ?? '',
-    descripcion: infoLocalState?.descripcion ?? '',
-    direccion: infoLocalState?.direccion ?? '',
-    telefonoWhatsApp: infoLocalState?.telefonoWhatsApp ?? '',
-    costoEnvio: infoLocalState?.costoEnvio ?? 0,
-    portadaUrl: infoLocalState?.portadaUrl ?? '',
-    avatarUrl: infoLocalState?.avatarUrl ?? '',
-    cbuCvu: infoLocalState?.cbuCvu ?? '',
-    alias: infoLocalState?.alias ?? '',
-    instagram: infoLocalState?.instagram ?? '',
-    facebook: infoLocalState?.facebook ?? '',
+    nombre: configuracion?.nombre ?? '',
+    descripcion: configuracion?.descripcion ?? '',
+    direccion: configuracion?.direccion ?? '',
+    telefonoWhatsApp: configuracion?.telefonoWhatsApp ?? '',
+    costoEnvio: configuracion?.costoEnvio ?? 0,
+    portadaUrl: configuracion?.portadaUrl ?? '',
+    avatarUrl: configuracion?.avatarUrl ?? '',
+    cbuCvu: configuracion?.cbuCvu ?? '',
+    alias: configuracion?.alias ?? '',
+    instagram: configuracion?.instagram ?? '',
+    facebook: configuracion?.facebook ?? '',
   };
 
   const perfilVacio = !infoLocalState;
@@ -155,6 +157,7 @@ export default function HomeCliente({ productos, infoLocal, categorias }: HomeCl
         : []
     );
     setCategoriasState(Array.isArray(categorias) ? categorias : []);
+    setLoadingDatos(false);
   }, [infoLocal, productos, categorias]);
 
   useEffect(() => {
@@ -510,6 +513,10 @@ export default function HomeCliente({ productos, infoLocal, categorias }: HomeCl
       return siguiente;
     });
   };
+
+  if (negocioLoading || loadingDatos) {
+    return <EsqueletoCarga />;
+  }
 
   const cantidadTotalProductos = carrito.reduce((acc: number, item: ItemDelCarrito) => acc + item.cantidad, 0);
   const subtotalCarrito = carrito.reduce((acc: number, item: ItemDelCarrito) => acc + item.precio * item.cantidad, 0);
