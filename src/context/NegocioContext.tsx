@@ -1,20 +1,71 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode, useMemo } from 'react';
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react';
 import { supabase } from '../supabase';
 
-interface NegocioContextType {
+export interface NegocioContextType {
   negocioId: string | null;
   negocioNombre: string | null;
+  configuracion: Record<string, unknown> | null;
   loading: boolean;
   error: string | null;
+  tenantNotFound: boolean;
+  subdominio: string | null;
 }
+
+interface NegocioRecord {
+  id: string;
+  nombre: string;
+  subdominio?: string | null;
+}
+
+const DEFAULT_SUBDOMAIN = 'apppedidosnuevolocal';
+
+const isLoopbackOrIp = (hostname: string): boolean => {
+  const normalized = hostname.trim().toLowerCase();
+  if (!normalized) return true;
+  if (normalized === 'localhost' || normalized === '127.0.0.1' || normalized === '0.0.0.0' || normalized === '::1') {
+    return true;
+  }
+
+  return /^\d{1,3}(?:\.\d{1,3}){3}$/.test(normalized);
+};
+
+const extractSubdominio = (hostname: string): string | null => {
+  const normalized = hostname.trim().toLowerCase();
+  if (!normalized) return null;
+
+  if (isLoopbackOrIp(normalized)) {
+    return DEFAULT_SUBDOMAIN;
+  }
+
+  const [firstSegment] = normalized.split('.');
+  if (!firstSegment) return null;
+
+  return /^[a-z0-9-]{1,63}$/.test(firstSegment) ? firstSegment : null;
+};
+
+const isMissingTableError = (error: { code?: string; message?: string } | null): boolean => {
+  const code = error?.code ?? '';
+  const message = error?.message ?? '';
+  return code === '42P01' || code === 'PGRST205' || /does not exist|relation/i.test(message);
+};
 
 const NegocioContext = createContext<NegocioContextType | undefined>(undefined);
 
 export const NegocioProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [negocioId, setNegocioId] = useState<string | null>(null);
   const [negocioNombre, setNegocioNombre] = useState<string | null>(null);
+  const [configuracion, setConfiguracion] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [tenantNotFound, setTenantNotFound] = useState<boolean>(false);
+  const [subdominio, setSubdominio] = useState<string | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -22,64 +73,74 @@ export const NegocioProvider: React.FC<{ children: ReactNode }> = ({ children })
     const detectarNegocioPorSubdominio = async () => {
       try {
         const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
-        const partes = hostname.split('.');
+        const subdominioBuscado = extractSubdominio(hostname);
 
-        let subdominioBuscado = '';
+        setSubdominio(subdominioBuscado);
+        setError(null);
+        setTenantNotFound(false);
+        setConfiguracion(null);
 
-        if (!hostname || hostname.includes('localhost') || partes.length < 2) {
-          subdominioBuscado = 'apppedidosnuevolocal';
-        } else {
-          subdominioBuscado = partes[0].toLowerCase();
-        }
-
-        if (!/^[a-z0-9-]{1,63}$/.test(subdominioBuscado)) {
+        if (!subdominioBuscado) {
           if (mounted) {
-            setError('invalid_subdomain');
+            setTenantNotFound(true);
             setLoading(false);
           }
           return;
         }
 
-        const cacheKey = `tenant_cache_${subdominioBuscado}`;
-        const cached = typeof window !== 'undefined' ? window.sessionStorage.getItem(cacheKey) : null;
-        if (cached) {
-          try {
-            const parsed = JSON.parse(cached) as { id: string; nombre: string } | null;
-            if (parsed && mounted) {
-              setNegocioId(parsed.id);
-              setNegocioNombre(parsed.nombre);
-              setLoading(false);
-              return;
-            }
-          } catch {}
-        }
-
-        const res = await supabase
+        const negocioResponse = await supabase
           .from('negocios')
-          .select('id, nombre')
+          .select('id, nombre, subdominio')
           .eq('subdominio', subdominioBuscado)
           .maybeSingle();
 
-        if (res.error || !res.data) {
+        const negocio = negocioResponse.data as NegocioRecord | null;
+
+        if (negocioResponse.error || !negocio) {
           if (mounted) {
-            setError('tenant_not_found');
-            setLoading(false);
+            setTenantNotFound(true);
           }
           return;
         }
 
         if (mounted) {
-          const negocio = res.data as { id: string; nombre: string };
           setNegocioId(negocio.id);
           setNegocioNombre(negocio.nombre);
-          try {
-            window.sessionStorage.setItem(cacheKey, JSON.stringify({ id: negocio.id, nombre: negocio.nombre }));
-          } catch {}
         }
-      } catch (err: any) {
-        if (mounted) setError(err?.message ?? 'unknown_error');
+
+        let configuracionData: Record<string, unknown> | null = null;
+        let configError: Error | null = null;
+
+        for (const tableName of ['configuracion', 'shop_config']) {
+          const response = await supabase.from(tableName).select('*').eq('negocio_id', negocio.id).maybeSingle();
+
+          if (!response.error && response.data) {
+            configuracionData = response.data as Record<string, unknown>;
+            break;
+          }
+
+          if (response.error && !isMissingTableError(response.error)) {
+            configError = response.error as Error;
+            break;
+          }
+        }
+
+        if (configError) {
+          throw configError;
+        }
+
+        if (mounted) {
+          setConfiguracion(configuracionData);
+        }
+      } catch (err: unknown) {
+        if (mounted) {
+          setError(err instanceof Error ? err.message : 'unknown_error');
+          setTenantNotFound(false);
+        }
       } finally {
-        if (mounted) setLoading(false);
+        if (mounted) {
+          setLoading(false);
+        }
       }
     };
 
@@ -90,7 +151,18 @@ export const NegocioProvider: React.FC<{ children: ReactNode }> = ({ children })
     };
   }, []);
 
-  const value = useMemo(() => ({ negocioId, negocioNombre, loading, error }), [negocioId, negocioNombre, loading, error]);
+  const value = useMemo<NegocioContextType>(
+    () => ({
+      negocioId,
+      negocioNombre,
+      configuracion,
+      loading,
+      error,
+      tenantNotFound,
+      subdominio,
+    }),
+    [negocioId, negocioNombre, configuracion, loading, error, tenantNotFound, subdominio],
+  );
 
   return <NegocioContext.Provider value={value}>{children}</NegocioContext.Provider>;
 };
