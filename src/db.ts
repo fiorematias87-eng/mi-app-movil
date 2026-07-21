@@ -99,6 +99,7 @@ const mapProductoRow = (row: any): Producto => ({
   imagen: row.imagen ?? '',
   hidden: row.hidden === true,
   activo: row.activo === true,
+  negocio_id: row.negocio_id ?? undefined,
 });
 
 const generateId = (): string => {
@@ -108,21 +109,30 @@ const generateId = (): string => {
   return `prod_${Math.random().toString(36).slice(2, 10)}_${Date.now()}`;
 };
 
-export const getShopConfigData = async (): Promise<ShopConfigData> => {
+export const getShopConfigData = async (negocioId?: string): Promise<ShopConfigData> => {
   try {
-    const { data: configData, error: configError } = await supabase
+    let configQuery = supabase
       .from(CONFIG_TABLE)
-      .select('info_local, categorias')
-      .eq('id', CONFIG_ROW_ID)
-      .maybeSingle();
+      .select('info_local, categorias');
+
+    if (negocioId) {
+      configQuery = configQuery.eq('id', CONFIG_ROW_ID).eq('negocio_id', negocioId);
+    } else {
+      configQuery = configQuery.eq('id', CONFIG_ROW_ID);
+    }
+
+    const { data: configData, error: configError } = await configQuery.maybeSingle();
 
     if (configError) {
       throw configError;
     }
 
-    const { data: productosSnap, error: productosError } = await supabase
-      .from(PRODUCTOS_TABLE)
-      .select('*');
+    let productosQuery = supabase.from(PRODUCTOS_TABLE).select('*');
+    if (negocioId) {
+      productosQuery = productosQuery.eq('negocio_id', negocioId);
+    }
+
+    const { data: productosSnap, error: productosError } = await productosQuery;
 
     if (productosError) {
       throw productosError;
@@ -134,7 +144,7 @@ export const getShopConfigData = async (): Promise<ShopConfigData> => {
 
     return {
       infoLocal: { ...infoLocalPorDefecto, ...(configData?.info_local ?? {}) },
-      productos: productosFromCol.length ? productosFromCol : productosPorDefecto,
+      productos: productosFromCol,
       categorias: Array.isArray(configData?.categorias) && configData!.categorias.length ? configData!.categorias : categoriesPorDefecto,
     };
   } catch (error) {
@@ -151,10 +161,11 @@ export const getShopConfigData = async (): Promise<ShopConfigData> => {
 
 export type SaveShopConfigDataPayload = Partial<ShopConfigData>;
 
-export const saveProductosToCollection = async (nuevosProductos: Producto[]): Promise<void> => {
+export const saveProductosToCollection = async (nuevosProductos: Producto[], negocioId?: string): Promise<void> => {
   const productosPayload = nuevosProductos.map((p) => ({
     ...p,
     precio: Number(p.precio ?? 0),
+    negocio_id: negocioId ?? p.negocio_id,
   }));
 
   const { error } = await supabase.from(PRODUCTOS_TABLE).upsert(productosPayload, { onConflict: 'id' });
@@ -165,6 +176,7 @@ export const saveProductosToCollection = async (nuevosProductos: Producto[]): Pr
 
 export const saveShopConfigData = async (
   payload: SaveShopConfigDataPayload,
+  negocioId?: string,
 ): Promise<boolean> => {
   try {
     try {
@@ -180,7 +192,7 @@ export const saveShopConfigData = async (
     }
 
     if (payload.productos !== undefined) {
-      await saveProductosToCollection(payload.productos);
+      await saveProductosToCollection(payload.productos, negocioId);
     }
 
     if (payload.infoLocal !== undefined || payload.categorias !== undefined) {
@@ -189,8 +201,10 @@ export const saveShopConfigData = async (
       };
       if (payload.infoLocal !== undefined) configPayload.info_local = payload.infoLocal;
       if (payload.categorias !== undefined) configPayload.categorias = payload.categorias;
+      if (negocioId) configPayload.negocio_id = negocioId;
 
-      const { error } = await supabase.from(CONFIG_TABLE).upsert(configPayload, { onConflict: 'id' });
+      const onConflict = negocioId ? ['id', 'negocio_id'] : 'id';
+      const { error } = await supabase.from(CONFIG_TABLE).upsert(configPayload, { onConflict });
       if (error) {
         throw error;
       }
@@ -203,8 +217,8 @@ export const saveShopConfigData = async (
   }
 };
 
-export const crearProducto = async (producto: Omit<Producto, 'id'>): Promise<Producto> => {
-  const nuevoProducto: Producto = { ...producto, id: producto.id ?? generateId() };
+export const crearProducto = async (producto: Omit<Producto, 'id'>, negocioId?: string): Promise<Producto> => {
+  const nuevoProducto: Producto = { ...producto, id: producto.id ?? generateId(), negocio_id: negocioId ?? producto.negocio_id };
   const { data, error } = await supabase.from(PRODUCTOS_TABLE).insert(nuevoProducto).select().maybeSingle();
   if (error) {
     throw error;
@@ -212,8 +226,13 @@ export const crearProducto = async (producto: Omit<Producto, 'id'>): Promise<Pro
   return mapProductoRow(data);
 };
 
-export const actualizarProducto = async (id: string, cambios: Partial<Producto>): Promise<boolean> => {
-  const { error } = await supabase.from(PRODUCTOS_TABLE).update(cambios).eq('id', id);
+export const actualizarProducto = async (id: string, cambios: Partial<Producto>, negocioId?: string): Promise<boolean> => {
+  const query = supabase.from(PRODUCTOS_TABLE).update(cambios).eq('id', id);
+  if (negocioId) {
+    query.eq('negocio_id', negocioId);
+  }
+
+  const { error } = await query;
   if (error) {
     console.error('Error actualizando producto en Supabase:', error);
     return false;
@@ -221,8 +240,13 @@ export const actualizarProducto = async (id: string, cambios: Partial<Producto>)
   return true;
 };
 
-export const eliminarProducto = async (id: string): Promise<boolean> => {
-  const { error } = await supabase.from(PRODUCTOS_TABLE).delete().eq('id', id);
+export const eliminarProducto = async (id: string, negocioId?: string): Promise<boolean> => {
+  const query = supabase.from(PRODUCTOS_TABLE).delete().eq('id', id);
+  if (negocioId) {
+    query.eq('negocio_id', negocioId);
+  }
+
+  const { error } = await query;
   if (error) {
     console.error('Error eliminando producto en Supabase:', error);
     return false;
@@ -234,13 +258,14 @@ export const saveCatalogData = async (
   nuevosProductos: Producto[],
   infoLocal: Partial<InfoLocal> | undefined,
   categorias: string[],
+  negocioId?: string,
 ): Promise<boolean> => {
   try {
-    await saveProductosToCollection(nuevosProductos);
+    await saveProductosToCollection(nuevosProductos, negocioId);
     await saveShopConfigData({
       infoLocal,
       categorias,
-    });
+    }, negocioId);
     return true;
   } catch (error) {
     console.error('No se pudo guardar el catálogo:', error);
@@ -257,7 +282,7 @@ export const isAdminSessionActive = async (): Promise<boolean> => {
   return Boolean(data.session?.user);
 };
 
-export const subscribeShopConfigData = (callback: (data: ShopConfigData) => void) => {
+export const subscribeShopConfigData = (callback: (data: ShopConfigData) => void, negocioId?: string) => {
   if (typeof window === 'undefined') {
     callback({
       infoLocal: infoLocalPorDefecto,
@@ -273,13 +298,13 @@ export const subscribeShopConfigData = (callback: (data: ShopConfigData) => void
   const emitir = () => {
     const merged: ShopConfigData = {
       infoLocal: { ...infoLocalPorDefecto, ...(latestConfig?.infoLocal ?? {}) },
-      productos: latestProductos.length ? latestProductos : productosPorDefecto,
+      productos: latestProductos,
       categorias: Array.isArray(latestConfig?.categorias) && latestConfig!.categorias.length ? latestConfig!.categorias : categoriesPorDefecto,
     };
     callback(merged);
   };
 
-  void getShopConfigData()
+  void getShopConfigData(negocioId)
     .then((data) => {
       latestConfig = { infoLocal: data.infoLocal, categorias: data.categorias };
       latestProductos = data.productos;
@@ -293,7 +318,12 @@ export const subscribeShopConfigData = (callback: (data: ShopConfigData) => void
     .channel('realtime_productos')
     .on(
       'postgres_changes',
-      { event: '*', schema: 'public', table: PRODUCTOS_TABLE },
+      {
+        event: '*',
+        schema: 'public',
+        table: PRODUCTOS_TABLE,
+        ...(negocioId ? { filter: `negocio_id=eq.${negocioId}` } : {}),
+      },
       (payload) => {
         const eventType = payload.eventType;
         const newRow = payload.new as any;
@@ -318,7 +348,12 @@ export const subscribeShopConfigData = (callback: (data: ShopConfigData) => void
     .channel('realtime_shop_config')
     .on(
       'postgres_changes',
-      { event: '*', schema: 'public', table: CONFIG_TABLE },
+      {
+        event: '*',
+        schema: 'public',
+        table: CONFIG_TABLE,
+        ...(negocioId ? { filter: `negocio_id=eq.${negocioId}` } : {}),
+      },
       (payload) => {
         const newRow = payload.new as any;
         if (newRow) {

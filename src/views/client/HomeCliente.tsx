@@ -4,6 +4,7 @@ import { ShoppingCart, Star, Minus, Plus, X, MapPin, Search, Trash2, ExternalLin
 import AdminPanel from '../../components/AdminPanel';
 import { supabase } from '../../supabase';
 import { saveShopConfigData } from '../../db';
+import { useNegocio } from '../../NegocioContext';
 import type { Producto, InfoLocal } from '../../types';
 
 interface ItemDelCarrito {
@@ -89,6 +90,33 @@ export default function HomeCliente({ productos, infoLocal, categorias }: HomeCl
   const [categoriaActiva, setCategoriaActiva] = useState<string>('pizzas');
   const [infoLocalCacheVersion, setInfoLocalCacheVersion] = useState(0);
   const [productosCacheVersion, setProductosCacheVersion] = useState(0);
+  const { negocioId } = useNegocio();
+
+  useEffect(() => {
+    const cargarProductosPorNegocio = async () => {
+      if (!negocioId) return;
+
+      const { data, error } = await supabase
+        .from<Producto>('productos')
+        .select('*')
+        .eq('negocio_id', negocioId);
+
+      if (error) {
+        console.error('Error cargando productos para negocio:', error.message);
+        return;
+      }
+
+      if (Array.isArray(data) && data.length > 0) {
+        setProductosState(data.map((producto) => ({
+          ...producto,
+          activo: producto.activo ?? false,
+          hidden: producto.hidden === true,
+        })));
+      }
+    };
+
+    void cargarProductosPorNegocio();
+  }, [negocioId]);
 
   const getCacheBustedUrl = (url: string, version: number) => {
     if (!url?.trim()) return '';

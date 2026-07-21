@@ -27,6 +27,7 @@ import {
   verificarSuscripcion,
 } from '../db';
 import { supabase } from '../supabase';
+import { useNegocio } from '../NegocioContext';
 
 interface AdminPanelProps {
   infoLocal: Partial<InfoLocal> | null | undefined;
@@ -95,6 +96,7 @@ export default function AdminPanel({
   const [imageCacheVersion, setImageCacheVersion] = useState(0);
   const [esAdmin, setEsAdmin] = useState(false);
   const [cargando, setCargando] = useState(true);
+  const { negocioId } = useNegocio();
 
   useEffect(() => {
     let activo = true;
@@ -225,7 +227,7 @@ export default function AdminPanel({
   // Escritura por producto: persistir en Firestore primero, luego actualizar estado local
   const actualizarProductoEnFirestore = async (id: string, cambios: Partial<Producto>) => {
     try {
-      const ok = await actualizarProducto(id, cambios);
+      const ok = await actualizarProducto(id, cambios, negocioId);
       if (!ok) {
         alert('No se pudo guardar el cambio. Revisa la conexión e intenta nuevamente.');
         return false;
@@ -275,7 +277,7 @@ export default function AdminPanel({
       if (!ok) return;
     } else {
       try {
-        const nuevoProd = await crearProducto(campos as Omit<Producto, 'id'>);
+        const nuevoProd = await crearProducto(campos as Omit<Producto, 'id'>, negocioId);
         setProductos((prev) => [...prev, nuevoProd]);
       } catch (error) {
         console.error('Error creando producto en Supabase:', error);
@@ -298,7 +300,7 @@ export default function AdminPanel({
     if (!producto) return;
     const nuevoEstado = producto.hidden === true ? false : true;
 
-    const ok = await actualizarProducto(id, { hidden: nuevoEstado });
+    const ok = await actualizarProducto(id, { hidden: nuevoEstado }, negocioId);
     if (ok) {
       setProductos((prev) => prev.map((p) => (p.id === id ? { ...p, hidden: nuevoEstado } : p)));
     } else {
@@ -309,7 +311,7 @@ export default function AdminPanel({
   const handleEliminarProducto = async (id: string) => {
     if (!window.confirm('¿Eliminar este producto?')) return;
 
-    const ok = await eliminarProducto(id);
+    const ok = await eliminarProducto(id, negocioId);
     if (ok) {
       setProductos((p) => p.filter((x) => x.id !== id));
     } else {
@@ -327,7 +329,7 @@ export default function AdminPanel({
 
     const nuevasCategorias = [...categorias, nombre];
     try {
-      const ok = await guardarProductosEnFirebase(productos, infoLocal ?? undefined, nuevasCategorias);
+      const ok = await guardarProductosEnFirebase(productos, infoLocal ?? undefined, nuevasCategorias, negocioId);
       if (!ok) {
         alert('No se pudo guardar la nueva sección. Intenta nuevamente.');
         return;
@@ -344,9 +346,9 @@ export default function AdminPanel({
     if (!window.confirm(`¿Borrar la sección "${categoria}"?`)) return;
     const nuevasCategorias = categorias.filter((c) => c !== categoria);
     try {
-      const ok = await guardarProductosEnFirebase(productos, infoLocal ?? undefined, nuevasCategorias);
+      const ok = await guardarProductosEnFirebase(productos, infoLocal ?? undefined, nuevasCategorias, negocioId);
       if (!ok) {
-        alert('No se pudo eliminar la sección. Intenta nuevamente.');
+        alert('No se pudo eliminar la categoría. Intenta nuevamente.');
         return;
       }
       setCategorias(nuevasCategorias);
@@ -365,7 +367,7 @@ export default function AdminPanel({
     setInfoLocal(actualizada);
     try {
       // Enviar productos y categorias para evitar sobrescribir con arrays vacíos
-      await saveShopConfigData({ infoLocal: actualizada, categorias, productos });
+      await saveShopConfigData({ infoLocal: actualizada, categorias, productos }, negocioId);
     } catch (err) {
       console.error('Error guardando infoLocal:', err);
     }
@@ -383,7 +385,7 @@ export default function AdminPanel({
           categoria: prodForm.categoria.trim(),
           imagen: '',
           hidden: false,
-        });
+        }, negocioId);
         productoId = nuevoProducto.id;
         setEditandoProductoId(nuevoProducto.id);
         setProductos((prev) => [...prev, nuevoProducto]);
@@ -398,7 +400,7 @@ export default function AdminPanel({
     if (url) {
       setProductoImageUrl(url);
       setProdForm((prev) => ({ ...prev, imagen: url }));
-      await actualizarProducto(productoId, { imagen: url });
+      await actualizarProducto(productoId, { imagen: url }, negocioId);
     }
   };
 

@@ -21,9 +21,11 @@ export interface Producto {
   imagen: string;
   activo?: boolean;
   hidden?: boolean;
+  negocio_id?: string;
 }
 
 export interface ProductoRow extends Producto {
+  negocio_id: string;
   activo: boolean;
   hidden: boolean;
   inserted_at: string;

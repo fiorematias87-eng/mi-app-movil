@@ -1,6 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
+import { NegocioProvider } from "./context/NegocioContext";
 import "./index.css";
 
 const rootElement = document.getElementById("root");
@@ -11,4 +12,10 @@ if (!rootElement) {
 
 const root = ReactDOM.createRoot(rootElement);
 console.log("App montada");
-root.render(<App />);
+root.render(
+  <React.StrictMode>
+    <NegocioProvider>
+      <App />
+    </NegocioProvider>
+  </React.StrictMode>
+);
