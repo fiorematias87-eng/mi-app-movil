@@ -37,17 +37,22 @@ const isLoopbackOrIp = (hostname: string): boolean => {
 };
 
 const extractSubdominio = (hostname: string): string | null => {
-  const normalized = hostname.trim().toLowerCase();
-  if (!normalized) return null;
+  if (!hostname) return null;
 
-  if (isLoopbackOrIp(normalized)) {
+  const normalizedHost = hostname.trim().toLowerCase();
+  if (!normalizedHost) return null;
+
+  if (isLoopbackOrIp(normalizedHost)) {
     return DEFAULT_SUBDOMAIN;
   }
 
-  const [firstSegment] = normalized.split('.');
-  if (!firstSegment) return null;
+  // Obtener el primer segmento explicitamente y sanitizarlo
+  const firstSegment = normalizedHost.split('.')[0] ?? '';
+  const subdominioLimpio = firstSegment.trim().toLowerCase();
+  if (!subdominioLimpio) return null;
 
-  return /^[a-z0-9-]{1,63}$/.test(firstSegment) ? firstSegment : null;
+  // Validar formato razonable para subdominios
+  return /^[a-z0-9-]{1,63}$/.test(subdominioLimpio) ? subdominioLimpio : null;
 };
 
 const isMissingTableError = (error: { code?: string; message?: string } | null): boolean => {
@@ -73,14 +78,14 @@ export const NegocioProvider: React.FC<{ children: ReactNode }> = ({ children })
     const detectarNegocioPorSubdominio = async () => {
       try {
         const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
-        const subdominioBuscado = extractSubdominio(hostname);
+        const subdominioLimpio = extractSubdominio(hostname);
 
-        setSubdominio(subdominioBuscado);
+        setSubdominio(subdominioLimpio);
         setError(null);
         setTenantNotFound(false);
         setConfiguracion(null);
 
-        if (!subdominioBuscado) {
+        if (!subdominioLimpio) {
           if (mounted) {
             setTenantNotFound(true);
             setLoading(false);
@@ -91,12 +96,17 @@ export const NegocioProvider: React.FC<{ children: ReactNode }> = ({ children })
         const negocioResponse = await supabase
           .from('negocios')
           .select('id, nombre, subdominio')
-          .eq('subdominio', subdominioBuscado)
+          .eq('subdominio', subdominioLimpio)
           .maybeSingle();
 
         const negocio = negocioResponse.data as NegocioRecord | null;
 
         if (negocioResponse.error || !negocio) {
+          console.error(
+            `Subdominio buscado: '${subdominioLimpio}'`,
+            negocioResponse.error ?? 'no data returned',
+          );
+
           if (mounted) {
             setTenantNotFound(true);
           }
