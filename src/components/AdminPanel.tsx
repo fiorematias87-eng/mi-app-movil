@@ -96,7 +96,8 @@ export default function AdminPanel({
   const [imageCacheVersion, setImageCacheVersion] = useState(0);
   const [esAdmin, setEsAdmin] = useState(false);
   const [cargando, setCargando] = useState(true);
-  const { negocioId } = useNegocio();
+  const { negocioId: negocioIdFromContext } = useNegocio();
+  const negocioId = negocioIdFromContext ?? undefined;
 
   useEffect(() => {
     let activo = true;

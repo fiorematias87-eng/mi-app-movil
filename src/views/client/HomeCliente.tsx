@@ -91,7 +91,8 @@ export default function HomeCliente({ productos, infoLocal, categorias }: HomeCl
   const [categoriaActiva, setCategoriaActiva] = useState<string>('pizzas');
   const [infoLocalCacheVersion, setInfoLocalCacheVersion] = useState(0);
   const [productosCacheVersion, setProductosCacheVersion] = useState(0);
-  const { negocioId, loading: negocioLoading } = useNegocio();
+  const { negocioId: negocioIdFromContext, loading: negocioLoading } = useNegocio();
+  const negocioId = negocioIdFromContext ?? undefined;
   const configuracion = infoLocalState ?? undefined;
 
   useEffect(() => {
@@ -99,7 +100,7 @@ export default function HomeCliente({ productos, infoLocal, categorias }: HomeCl
       if (!negocioId) return;
 
       const { data, error } = await supabase
-        .from<Producto>('productos')
+        .from('productos')
         .select('*')
         .eq('negocio_id', negocioId);
 
@@ -108,11 +109,18 @@ export default function HomeCliente({ productos, infoLocal, categorias }: HomeCl
         return;
       }
 
-      if (Array.isArray(data) && data.length > 0) {
-        setProductosState(data.map((producto) => ({
-          ...producto,
-          activo: producto.activo ?? false,
+      if (Array.isArray(data)) {
+        const productosDelNegocio = data as Array<Record<string, unknown>>;
+        setProductosState(productosDelNegocio.map((producto) => ({
+          id: typeof producto.id === 'string' ? producto.id : '',
+          nombre: typeof producto.nombre === 'string' ? producto.nombre : '',
+          descripcion: typeof producto.descripcion === 'string' ? producto.descripcion : '',
+          precio: Number(producto.precio ?? 0),
+          categoria: typeof producto.categoria === 'string' ? producto.categoria : '',
+          imagen: typeof producto.imagen === 'string' ? producto.imagen : '',
+          activo: producto.activo === true,
           hidden: producto.hidden === true,
+          negocio_id: typeof producto.negocio_id === 'string' ? producto.negocio_id : undefined,
         })));
       }
     };
@@ -317,7 +325,7 @@ export default function HomeCliente({ productos, infoLocal, categorias }: HomeCl
       infoLocal: nuevaInfoLocal,
       categorias: categoriasState,
       productos: productosState,
-    });
+    }, negocioId);
   };
 
   const handleFileChange = async (e: ChangeEvent<HTMLInputElement>, tipo: 'portada' | 'avatar' | 'producto') => {

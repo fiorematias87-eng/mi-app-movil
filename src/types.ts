@@ -33,8 +33,10 @@ export interface ProductoRow extends Producto {
 }
 
 export interface ShopConfigRow {
-  id: string;
-  info_local: InfoLocal;
+  id?: string;
+  negocio_id?: string;
+  info_local?: Partial<InfoLocal>;
+  categorias?: string[];
 }
 
 export interface PerfilRow {
@@ -55,14 +57,19 @@ export interface Database {
         Insert: Omit<ShopConfigRow, 'id'>;
         Update: Partial<ShopConfigRow>;
       };
+      configuracion: {
+        Row: ShopConfigRow;
+        Insert: Omit<ShopConfigRow, 'id'>;
+        Update: Partial<ShopConfigRow>;
+      };
       perfiles: {
         Row: PerfilRow;
         Insert: Omit<PerfilRow, 'id'> & { id: string };
         Update: Partial<PerfilRow>;
       };
     };
-    Views: {};
-    Functions: {};
-    Enums: {};
+    Views: Record<string, never>;
+    Functions: Record<string, never>;
+    Enums: Record<string, never>;
   };
 }
