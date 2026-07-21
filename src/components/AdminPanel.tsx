@@ -252,6 +252,11 @@ export default function AdminPanel({
   };
 
   const handleGuardarProducto = async () => {
+    if (!negocioId) {
+      alert('Cargando datos del negocio... Por favor reintenta en un momento.');
+      return;
+    }
+
     if (!prodForm.nombre.trim() || !prodForm.precio) return;
     if (subiendoImagen) {
       alert('Espera a que la imagen termine de subir antes de guardar el producto.');
@@ -297,6 +302,11 @@ export default function AdminPanel({
   };
 
   const handleToggleHiddenProducto = async (id: string) => {
+    if (!negocioId) {
+      alert('Cargando datos del negocio... Por favor reintenta en un momento.');
+      return;
+    }
+
     const producto = productos.find((p) => p.id === id);
     if (!producto) return;
     const nuevoEstado = producto.hidden === true ? false : true;
@@ -310,6 +320,11 @@ export default function AdminPanel({
   };
 
   const handleEliminarProducto = async (id: string) => {
+    if (!negocioId) {
+      alert('Cargando datos del negocio... Por favor reintenta en un momento.');
+      return;
+    }
+
     if (!window.confirm('¿Eliminar este producto?')) return;
 
     const ok = await eliminarProducto(id, negocioId);
@@ -321,6 +336,11 @@ export default function AdminPanel({
   };
 
   const handleAgregarCategoria = async () => {
+    if (!negocioId) {
+      alert('Cargando datos del negocio... Por favor reintenta en un momento.');
+      return;
+    }
+
     if (!nuevaCat.trim()) return;
     const nombre = nuevaCat.toLowerCase().trim();
     if (categorias.includes(nombre)) {
@@ -344,6 +364,11 @@ export default function AdminPanel({
   };
 
   const handleEliminarCategoria = async (categoria: string) => {
+    if (!negocioId) {
+      alert('Cargando datos del negocio... Por favor reintenta en un momento.');
+      return;
+    }
+
     if (!window.confirm(`¿Borrar la sección "${categoria}"?`)) return;
     const nuevasCategorias = categorias.filter((c) => c !== categoria);
     try {
@@ -364,6 +389,11 @@ export default function AdminPanel({
   const infoLocalValues: Partial<InfoLocal> = infoLocal ?? {};
 
   const handleInfoLocalChange = async (campo: keyof InfoLocal, valor: string | number) => {
+    if (!negocioId) {
+      alert('Cargando datos del negocio... Por favor reintenta en un momento.');
+      return;
+    }
+
     const actualizada = { ...(infoLocal ?? {}), [campo]: valor };
     setInfoLocal(actualizada);
     try {
@@ -375,6 +405,11 @@ export default function AdminPanel({
   };
 
   const handleProductoImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (!negocioId) {
+      alert('Cargando datos del negocio... Por favor reintenta en un momento.');
+      return;
+    }
+
     let productoId = editandoProductoId;
 
     if (!productoId) {

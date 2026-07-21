@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Camera, Edit2, Eye, EyeOff, Loader2, Trash2 } from 'lucide-react';
 import { crearProducto, actualizarProducto } from '../db';
+import { useNegocio } from '../context/NegocioContext';
 import type { Producto } from '../types';
 
 interface ProductoItemProps {
@@ -34,6 +35,7 @@ export default function ProductoItem({
   onProductUpdated,
   isNew = false,
 }: ProductoItemProps) {
+  const { negocioId } = useNegocio();
   const [isEditing, setIsEditing] = useState(Boolean(isNew));
   const [draft, setDraft] = useState<Producto>(() => crearDraft(producto));
   const [isUploading, setIsUploading] = useState(false);
@@ -56,6 +58,11 @@ export default function ProductoItem({
   }, [producto, isNew]);
 
   const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (!negocioId) {
+      alert('Cargando datos del negocio... Por favor reintenta en un momento.');
+      return;
+    }
+
     const file = event.target.files?.[0];
     if (!file) return;
 
@@ -73,7 +80,7 @@ export default function ProductoItem({
           categoria: draft.categoria.trim() || 'sin-categoria',
           imagen: '',
           activo: draft.activo ?? false,
-        });
+        }, negocioId);
         idParaSubir = nuevoProducto.id;
         setDraft((prev) => ({ ...prev, id: nuevoProducto.id }));
       }
@@ -106,7 +113,7 @@ export default function ProductoItem({
       const cloudinaryData = (await cloudinaryResponse.json()) as { secure_url: string };
       const urlNube = cloudinaryData.secure_url;
 
-      await actualizarProducto(idParaSubir, { imagen: urlNube });
+      await actualizarProducto(idParaSubir, { imagen: urlNube }, negocioId);
       const productoActualizado: Producto = { ...draft, id: idParaSubir, imagen: urlNube };
       setDraft(productoActualizado);
       setImageCacheVersion((prev) => prev + 1);

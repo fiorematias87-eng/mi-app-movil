@@ -122,6 +122,14 @@ const generateId = (): string => {
   return `prod_${Math.random().toString(36).slice(2, 10)}_${Date.now()}`;
 };
 
+const ensureNegocioId = (negocioId?: string): string => {
+  if (!negocioId) {
+    throw new Error('Cargando datos del negocio... Por favor reintenta en un momento.');
+  }
+
+  return negocioId;
+};
+
 const isMissingTableError = (error: { code?: string; message?: string } | null): boolean => {
   const code = error?.code ?? '';
   const message = error?.message ?? '';
@@ -139,37 +147,17 @@ const readConfigForTenant = async (
 };
 
 const saveConfigForTenant = async (payload: ConfigPayload, negocioId?: string) => {
-  if (!negocioId) {
-    throw new Error('No hay negocioId para guardar la configuración');
-  }
+  const tenantId = ensureNegocioId(negocioId);
 
-  const configPayload: ConfigPayload = { ...payload, negocio_id: negocioId };
+  const configPayload: ConfigPayload = { ...payload, negocio_id: tenantId };
 
   for (const tableName of CONFIG_TABLES) {
-    const existingQuery = supabase.from(tableName as keyof Database['public']['Tables']) as any;
-    const { data: existingConfig, error: existingConfigError } = await existingQuery
-      .select('id')
-      .eq('negocio_id', negocioId)
-      .maybeSingle();
+    const upsertQuery = supabase.from(tableName as keyof Database['public']['Tables']) as any;
+    const { error } = await upsertQuery
+      .upsert(configPayload as unknown as ShopConfigInsert, { onConflict: 'negocio_id' });
 
-    if (existingConfigError) {
-      throw existingConfigError;
-    }
-
-    if (existingConfig) {
-      const updateQuery = supabase.from(tableName as keyof Database['public']['Tables']) as any;
-      const { error } = await updateQuery
-        .update(configPayload as unknown as ShopConfigUpdate)
-        .eq('negocio_id', negocioId);
-      if (error) {
-        throw error;
-      }
-    } else {
-      const insertQuery = supabase.from(tableName as keyof Database['public']['Tables']) as any;
-      const { error } = await insertQuery.insert(configPayload as unknown as ShopConfigInsert);
-      if (error) {
-        throw error;
-      }
+    if (error) {
+      throw error;
     }
   }
 };
@@ -241,6 +229,8 @@ export const getShopConfigData = async (negocioId?: string): Promise<ShopConfigD
 export type SaveShopConfigDataPayload = Partial<ShopConfigData>;
 
 export const saveProductosToCollection = async (nuevosProductos: Producto[], negocioId?: string): Promise<void> => {
+  const tenantId = ensureNegocioId(negocioId);
+
   const productosPayload: ProductoInsert[] = nuevosProductos.map((p) => ({
     id: p.id,
     nombre: p.nombre,
@@ -250,7 +240,7 @@ export const saveProductosToCollection = async (nuevosProductos: Producto[], neg
     imagen: p.imagen,
     activo: p.activo ?? false,
     hidden: p.hidden ?? false,
-    negocio_id: negocioId ?? p.negocio_id ?? '',
+    negocio_id: tenantId,
   }));
 
   const productosQuery = supabase.from(PRODUCTOS_TABLE as keyof Database['public']['Tables']) as any;
@@ -297,6 +287,8 @@ export const saveShopConfigData = async (
 };
 
 export const crearProducto = async (producto: Omit<Producto, 'id'> & { id?: string }, negocioId?: string): Promise<Producto> => {
+  const tenantId = ensureNegocioId(negocioId);
+
   const nuevoProducto: ProductoInsert = {
     id: producto.id ?? generateId(),
     nombre: producto.nombre,
@@ -306,7 +298,7 @@ export const crearProducto = async (producto: Omit<Producto, 'id'> & { id?: stri
     imagen: producto.imagen,
     activo: producto.activo ?? false,
     hidden: producto.hidden ?? false,
-    negocio_id: negocioId ?? producto.negocio_id ?? '',
+    negocio_id: tenantId,
   };
 
   const productosQuery = supabase.from(PRODUCTOS_TABLE as keyof Database['public']['Tables']) as any;
@@ -321,12 +313,13 @@ export const crearProducto = async (producto: Omit<Producto, 'id'> & { id?: stri
 };
 
 export const actualizarProducto = async (id: string, cambios: Partial<Producto>, negocioId?: string): Promise<boolean> => {
+  const tenantId = ensureNegocioId(negocioId);
+
+  const payload = { ...cambios, negocio_id: tenantId };
   const query = (supabase.from(PRODUCTOS_TABLE as keyof Database['public']['Tables']) as any)
-    .update(cambios as unknown as ProductoUpdate)
-    .eq('id', id);
-  if (negocioId) {
-    query.eq('negocio_id', negocioId);
-  }
+    .update(payload as unknown as ProductoUpdate)
+    .eq('id', id)
+    .eq('negocio_id', tenantId);
 
   const { error } = await query;
   if (error) {
@@ -337,10 +330,9 @@ export const actualizarProducto = async (id: string, cambios: Partial<Producto>,
 };
 
 export const eliminarProducto = async (id: string, negocioId?: string): Promise<boolean> => {
-  const query = supabase.from(PRODUCTOS_TABLE).delete().eq('id', id);
-  if (negocioId) {
-    query.eq('negocio_id', negocioId);
-  }
+  const tenantId = ensureNegocioId(negocioId);
+
+  const query = supabase.from(PRODUCTOS_TABLE).delete().eq('id', id).eq('negocio_id', tenantId);
 
   const { error } = await query;
   if (error) {
