@@ -46,11 +46,17 @@ const isMissingTableError = (
 export const getNegocioBySubdominio = async (
   subdominio: string,
 ): Promise<NegocioRecord | null> => {
+  const normalizedSubdominio = subdominio.trim().toLowerCase();
+
+  console.log('[tenant.service] querying negocios with subdominio:', normalizedSubdominio);
+
   const { data, error } = await supabase
     .from('negocios')
     .select('id, nombre, subdominio')
-    .eq('subdominio', subdominio)
+    .eq('subdominio', normalizedSubdominio)
     .maybeSingle<NegocioRecord>();
+
+  console.log('[tenant.service] Supabase response for negocios:', { data, error });
 
   if (error) {
     throw new Error('No se pudo consultar el negocio asociado al subdominio.');
