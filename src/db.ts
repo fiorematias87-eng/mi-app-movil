@@ -16,6 +16,45 @@ type ConfigRowShape = {
 
 type ConfigPayload = ConfigRowShape;
 
+type MaybeSingleResult<T> = Promise<{ data: T | null; error: Error | null }>;
+
+type ConfigTenantQuery = {
+  select(columns: string): {
+    eq(column: string, value: string): { maybeSingle(): MaybeSingleResult<ConfigRowShape> };
+    maybeSingle(): MaybeSingleResult<ConfigRowShape>;
+  };
+};
+
+type UpsertTenantQuery = {
+  upsert(payload: unknown, options?: { onConflict?: string }): Promise<{ error: Error | null }>;
+};
+
+type InsertProductoQuery = {
+  insert(payload: unknown): {
+    select(): {
+      maybeSingle(): Promise<{ data: Record<string, unknown> | null; error: Error | null }>;
+    };
+  };
+};
+
+type UpdateProductoQuery = {
+  update(payload: unknown): {
+    eq(column: string, value: string): {
+      eq(column: string, value: string): Promise<{ error: Error | null }>;
+    };
+  };
+};
+
+type DeleteTenantProductsQuery = {
+  delete(): {
+    eq(column: string, value: string): Promise<{ error: Error | null }>;
+  };
+};
+
+type InsertManyProductosQuery = {
+  insert(payload: ProductoInsert[]): Promise<{ error: Error | null }>;
+};
+
 const CONFIG_TABLES = ['shop_config', 'configuracion'] as const satisfies readonly ConfigTableName[];
 const PRODUCTOS_TABLE = 'productos' as const;
 
@@ -61,47 +100,6 @@ export const productosPorDefecto: Producto[] = [
 ];
 
 export const categoriesPorDefecto: string[] = ['pizzas', 'bebidas', 'postres'];
-const STORAGE_KEY = 'mi_app_shop_config_v1';
-
-const leerDatosLocales = (): ShopConfigData => {
-  if (typeof window === 'undefined') {
-    return {
-      infoLocal: undefined,
-      productos: [],
-      categorias: [],
-    };
-  }
-
-  try {
-    const guardado = window.localStorage.getItem(STORAGE_KEY);
-    if (!guardado) {
-      return {
-        infoLocal: undefined,
-        productos: [],
-        categorias: [],
-      };
-    }
-
-    const parsed = JSON.parse(guardado) as Partial<ShopConfigData>;
-    return {
-      infoLocal: parsed.infoLocal ?? undefined,
-      productos: Array.isArray(parsed.productos) ? parsed.productos : [],
-      categorias: Array.isArray(parsed.categorias) ? parsed.categorias : [],
-    };
-  } catch {
-    return {
-      infoLocal: undefined,
-      productos: [],
-      categorias: [],
-    };
-  }
-};
-
-const guardarDatosLocales = (data: ShopConfigData) => {
-  if (typeof window !== 'undefined') {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-  }
-};
 
 const mapProductoRow = (row: Record<string, unknown>): Producto => ({
   id: typeof row.id === 'string' ? row.id : '',
@@ -140,10 +138,13 @@ const readConfigForTenant = async (
   tableName: ConfigTableName,
   negocioId?: string,
 ): Promise<{ data: ConfigRowShape | null; error: Error | null }> => {
-  const query = supabase.from(tableName as keyof Database['public']['Tables']) as any;
-  const baseQuery = query.select('info_local, categorias') as any;
-  const result = negocioId ? await baseQuery.eq('negocio_id', negocioId).maybeSingle() : await baseQuery.maybeSingle();
-  return result as { data: ConfigRowShape | null; error: Error | null };
+  const query = supabase.from(tableName as keyof Database['public']['Tables']) as unknown as ConfigTenantQuery;
+  const baseQuery = query.select('info_local, categorias');
+  const result = negocioId
+    ? await baseQuery.eq('negocio_id', negocioId).maybeSingle()
+    : await baseQuery.maybeSingle();
+
+  return result;
 };
 
 const saveConfigForTenant = async (payload: ConfigPayload, negocioId?: string) => {
@@ -152,9 +153,10 @@ const saveConfigForTenant = async (payload: ConfigPayload, negocioId?: string) =
   const configPayload: ConfigPayload = { ...payload, negocio_id: tenantId };
 
   for (const tableName of CONFIG_TABLES) {
-    const upsertQuery = supabase.from(tableName as keyof Database['public']['Tables']) as any;
-    const { error } = await upsertQuery
-      .upsert(configPayload as unknown as ShopConfigInsert, { onConflict: 'negocio_id' });
+    const upsertQuery = supabase.from(tableName as keyof Database['public']['Tables']) as unknown as UpsertTenantQuery;
+    const { error } = await upsertQuery.upsert(configPayload as unknown as ShopConfigInsert, {
+      onConflict: 'negocio_id',
+    });
 
     if (error) {
       throw error;
@@ -163,67 +165,58 @@ const saveConfigForTenant = async (payload: ConfigPayload, negocioId?: string) =
 };
 
 export const getShopConfigData = async (negocioId?: string): Promise<ShopConfigData> => {
-  try {
-    let configData: ConfigPayload | null = null;
-    let configError: Error | null = null;
+  const tenantId = ensureNegocioId(negocioId);
 
-    for (const tableName of CONFIG_TABLES) {
-      const response = await readConfigForTenant(tableName, negocioId);
+  let configData: ConfigPayload | null = null;
+  let configError: Error | null = null;
 
-      if (!response.error && response.data) {
-        const rawConfig = response.data as Record<string, unknown>;
-        const nextInfoLocal = rawConfig['info_local'] as Partial<InfoLocal> | undefined;
-        const nextCategorias = rawConfig['categorias'] as string[] | undefined;
+  for (const tableName of CONFIG_TABLES) {
+    const response = await readConfigForTenant(tableName, tenantId);
 
-        const mergedConfig: ConfigPayload = {
-          info_local: nextInfoLocal ?? configData?.info_local ?? undefined,
-          categorias: Array.isArray(nextCategorias) ? nextCategorias : configData?.categorias,
-        };
+    if (!response.error && response.data) {
+      const rawConfig = response.data as Record<string, unknown>;
+      const nextInfoLocal = rawConfig['info_local'] as Partial<InfoLocal> | undefined;
+      const nextCategorias = rawConfig['categorias'] as string[] | undefined;
 
-        configData = mergedConfig;
-        continue;
-      }
+      const mergedConfig: ConfigPayload = {
+        info_local: nextInfoLocal ?? configData?.info_local ?? undefined,
+        categorias: Array.isArray(nextCategorias) ? nextCategorias : configData?.categorias,
+      };
 
-      if (response.error && !isMissingTableError(response.error)) {
-        configError = response.error as Error;
-        break;
-      }
+      configData = mergedConfig;
+      continue;
     }
 
-    if (configError) {
-      throw configError;
+    if (response.error && !isMissingTableError(response.error)) {
+      configError = response.error as Error;
+      break;
     }
-
-    let productosQuery = supabase.from(PRODUCTOS_TABLE).select('*');
-    if (negocioId) {
-      productosQuery = productosQuery.eq('negocio_id', negocioId);
-    }
-
-    const { data: productosSnap, error: productosError } = await productosQuery;
-
-    if (productosError) {
-      throw productosError;
-    }
-
-    const productosFromCol: Producto[] = Array.isArray(productosSnap)
-      ? productosSnap.map(mapProductoRow)
-      : [];
-
-    return {
-      infoLocal: { ...infoLocalPorDefecto, ...(configData?.info_local ?? {}) },
-      productos: productosFromCol,
-      categorias: Array.isArray(configData?.categorias) && configData.categorias.length ? configData.categorias : categoriesPorDefecto,
-    };
-  } catch (error) {
-    console.warn('No se pudo leer Supabase, usando almacenamiento local:', error);
-    const fallback = leerDatosLocales();
-    if (fallback && (fallback.productos.length || fallback.categorias.length || fallback.infoLocal)) return fallback;
-    return {
-      infoLocal: infoLocalPorDefecto,
-      productos: productosPorDefecto,
-      categorias: categoriesPorDefecto,
-    };
   }
+
+  if (configError) {
+    throw configError;
+  }
+
+  const productosQuery = supabase
+    .from(PRODUCTOS_TABLE)
+    .select('*')
+    .eq('negocio_id', tenantId);
+
+  const { data: productosSnap, error: productosError } = await productosQuery;
+
+  if (productosError) {
+    throw productosError;
+  }
+
+  const productosFromCol: Producto[] = Array.isArray(productosSnap)
+    ? productosSnap.map(mapProductoRow)
+    : [];
+
+  return {
+    infoLocal: { ...infoLocalPorDefecto, ...(configData?.info_local ?? {}) },
+    productos: productosFromCol,
+    categorias: Array.isArray(configData?.categorias) && configData.categorias.length ? configData.categorias : categoriesPorDefecto,
+  };
 };
 
 export type SaveShopConfigDataPayload = Partial<ShopConfigData>;
@@ -243,10 +236,16 @@ export const saveProductosToCollection = async (nuevosProductos: Producto[], neg
     negocio_id: tenantId,
   }));
 
-  const productosQuery = supabase.from(PRODUCTOS_TABLE as keyof Database['public']['Tables']) as any;
-  const { error } = await productosQuery.upsert(productosPayload as unknown as ProductoInsert[], { onConflict: 'id' });
-  if (error) {
-    throw error;
+  const clearQuery = supabase.from(PRODUCTOS_TABLE as keyof Database['public']['Tables']) as unknown as DeleteTenantProductsQuery;
+  const clearResult = await clearQuery.delete().eq('negocio_id', tenantId);
+  if (clearResult.error) {
+    throw clearResult.error;
+  }
+
+  const insertQuery = supabase.from(PRODUCTOS_TABLE as keyof Database['public']['Tables']) as unknown as InsertManyProductosQuery;
+  const insertResult = await insertQuery.insert(productosPayload as unknown as ProductoInsert[]);
+  if (insertResult.error) {
+    throw insertResult.error;
   }
 };
 
@@ -254,36 +253,21 @@ export const saveShopConfigData = async (
   payload: SaveShopConfigDataPayload,
   negocioId?: string,
 ): Promise<boolean> => {
-  try {
-    try {
-      const existente = leerDatosLocales();
-      const merged: ShopConfigData = {
-        infoLocal: payload.infoLocal ?? existente.infoLocal ?? infoLocalPorDefecto,
-        productos: payload.productos ?? existente.productos ?? productosPorDefecto,
-        categorias: payload.categorias ?? existente.categorias ?? categoriesPorDefecto,
-      };
-      guardarDatosLocales(merged);
-    } catch (err) {
-      console.warn('Error actualizando localStorage:', err);
-    }
+  const tenantId = ensureNegocioId(negocioId);
 
-    if (payload.productos !== undefined) {
-      await saveProductosToCollection(payload.productos, negocioId);
-    }
-
-    if (payload.infoLocal !== undefined || payload.categorias !== undefined) {
-      const configPayload: Record<string, unknown> = {};
-      if (payload.infoLocal !== undefined) configPayload.info_local = payload.infoLocal;
-      if (payload.categorias !== undefined) configPayload.categorias = payload.categorias;
-
-      await saveConfigForTenant(configPayload, negocioId);
-    }
-
-    return true;
-  } catch (error) {
-    console.error('No se pudo guardar:', error);
-    throw error;
+  if (payload.productos !== undefined) {
+    await saveProductosToCollection(payload.productos, tenantId);
   }
+
+  if (payload.infoLocal !== undefined || payload.categorias !== undefined) {
+    const configPayload: Record<string, unknown> = {};
+    if (payload.infoLocal !== undefined) configPayload.info_local = payload.infoLocal;
+    if (payload.categorias !== undefined) configPayload.categorias = payload.categorias;
+
+    await saveConfigForTenant(configPayload, tenantId);
+  }
+
+  return true;
 };
 
 export const crearProducto = async (producto: Omit<Producto, 'id'> & { id?: string }, negocioId?: string): Promise<Producto> => {
@@ -301,7 +285,7 @@ export const crearProducto = async (producto: Omit<Producto, 'id'> & { id?: stri
     negocio_id: tenantId,
   };
 
-  const productosQuery = supabase.from(PRODUCTOS_TABLE as keyof Database['public']['Tables']) as any;
+  const productosQuery = supabase.from(PRODUCTOS_TABLE as keyof Database['public']['Tables']) as unknown as InsertProductoQuery;
   const { data, error } = await productosQuery
     .insert(nuevoProducto as unknown as ProductoInsert)
     .select()
@@ -309,19 +293,19 @@ export const crearProducto = async (producto: Omit<Producto, 'id'> & { id?: stri
   if (error) {
     throw error;
   }
-  return mapProductoRow(data);
+  return mapProductoRow((data ?? {}) as Record<string, unknown>);
 };
 
 export const actualizarProducto = async (id: string, cambios: Partial<Producto>, negocioId?: string): Promise<boolean> => {
   const tenantId = ensureNegocioId(negocioId);
 
   const payload = { ...cambios, negocio_id: tenantId };
-  const query = (supabase.from(PRODUCTOS_TABLE as keyof Database['public']['Tables']) as any)
+  const query = supabase.from(PRODUCTOS_TABLE as keyof Database['public']['Tables']) as unknown as UpdateProductoQuery;
+  const { error } = await query
     .update(payload as unknown as ProductoUpdate)
     .eq('id', id)
     .eq('negocio_id', tenantId);
 
-  const { error } = await query;
   if (error) {
     console.error('Error actualizando producto en Supabase:', error);
     return false;
@@ -414,12 +398,14 @@ export const subscribeShopConfigData = (callback: (data: ShopConfigData) => void
       },
       (payload) => {
         const eventType = payload.eventType;
-        const newRow = payload.new as any;
-        const oldRow = payload.old as any;
+        const newRow = payload.new as Partial<Producto> | undefined;
+        const oldRow = payload.old as Partial<Producto> | undefined;
 
         if (eventType === 'INSERT' || eventType === 'UPDATE') {
           if (newRow?.id) {
-            latestProductos = latestProductos.filter((p) => p.id !== newRow.id).concat(mapProductoRow(newRow));
+            latestProductos = latestProductos
+              .filter((p) => p.id !== newRow.id)
+              .concat(mapProductoRow(newRow as Record<string, unknown>));
           }
         } else if (eventType === 'DELETE') {
           if (oldRow?.id) {

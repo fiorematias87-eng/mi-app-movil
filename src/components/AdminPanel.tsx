@@ -28,6 +28,7 @@ import {
 } from '../db';
 import { supabase } from '../supabase';
 import { useNegocio } from '../context/NegocioContext';
+import { syncPerfilNegocio } from '../services/tenant.service';
 
 interface AdminPanelProps {
   infoLocal: Partial<InfoLocal> | null | undefined;
@@ -133,18 +134,31 @@ export default function AdminPanel({
           return;
         }
 
+        if (!negocioId) {
+          if (activo) {
+            setEsAdmin(false);
+          }
+          return;
+        }
+
         const { data, error } = await supabase
           .from('perfiles')
-          .select('rol')
+          .select('rol, negocio_id')
           .eq('id', user.id)
-          .maybeSingle<{ rol: string | null }>();
+          .maybeSingle<{ rol: string | null; negocio_id: string | null }>();
 
         if (error) {
           throw error;
         }
 
+        const perfilActualizado = await syncPerfilNegocio(
+          user.id,
+          negocioId,
+          data?.rol ?? 'admin',
+        );
+
         if (activo) {
-          setEsAdmin(data?.rol === 'admin');
+          setEsAdmin(perfilActualizado?.rol === 'admin');
         }
       } catch (error) {
         console.error('Error verificando permisos de administrador:', error);
@@ -174,7 +188,7 @@ export default function AdminPanel({
     return () => {
       activo = false;
     };
-  }, []);
+  }, [negocioId]);
 
   useEffect(() => {
     console.log('AdminPanel montado', {

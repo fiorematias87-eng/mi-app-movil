@@ -1,4 +1,5 @@
 import { supabase } from '../supabase';
+import type { Database, PedidoRow, PerfilRow } from '../types';
 
 export interface NegocioRecord {
   id: string;
@@ -12,6 +13,22 @@ export interface ConfiguracionRecord {
 }
 
 const CONFIGURATION_TABLES = ['configuracion', 'shop_config'] as const;
+
+type PerfilUpsertQuery = {
+  upsert(payload: unknown, options?: { onConflict?: string }): {
+    select(): {
+      maybeSingle(): Promise<{ data: PerfilRow | null; error: Error | null }>;
+    };
+  };
+};
+
+const requireTenantId = (negocioId: string | null | undefined): string => {
+  if (!negocioId?.trim()) {
+    throw new Error('No hay un negocio activo para ejecutar esta operación.');
+  }
+
+  return negocioId;
+};
 
 const isMissingTableError = (
   error: { code?: string; message?: string } | null,
@@ -45,12 +62,14 @@ export const getNegocioBySubdominio = async (
 export const getConfiguracion = async (
   negocioId: string,
 ): Promise<Record<string, unknown> | null> => {
+  const tenantId = requireTenantId(negocioId);
+
   const responses = await Promise.allSettled(
     CONFIGURATION_TABLES.map(async (tableName) => {
       const result = await supabase
         .from(tableName)
         .select('*')
-        .eq('negocio_id', negocioId)
+        .eq('negocio_id', tenantId)
         .maybeSingle<ConfiguracionRecord>();
 
       return result;
@@ -76,4 +95,61 @@ export const getConfiguracion = async (
   }
 
   return null;
+};
+
+export const getNegocioPedidos = async (
+  negocioId: string,
+): Promise<PedidoRow[]> => {
+  const tenantId = requireTenantId(negocioId);
+
+  const { data, error } = await supabase
+    .from('pedidos')
+    .select('*')
+    .eq('negocio_id', tenantId);
+
+  if (error) {
+    throw new Error('No se pudo consultar los pedidos del negocio.');
+  }
+
+  return (data ?? []) as PedidoRow[];
+};
+
+export const getNegocioUsuarios = async (
+  negocioId: string,
+): Promise<PerfilRow[]> => {
+  const tenantId = requireTenantId(negocioId);
+
+  const { data, error } = await supabase
+    .from('perfiles')
+    .select('*')
+    .eq('negocio_id', tenantId);
+
+  if (error) {
+    throw new Error('No se pudo consultar los usuarios del negocio.');
+  }
+
+  return (data ?? []) as PerfilRow[];
+};
+
+export const syncPerfilNegocio = async (
+  userId: string,
+  negocioId: string,
+  rol: string = 'admin',
+): Promise<PerfilRow | null> => {
+  const tenantId = requireTenantId(negocioId);
+
+  const perfilPayload = {
+    id: userId,
+    negocio_id: tenantId,
+    rol,
+  } satisfies Partial<PerfilRow> & { id: string };
+
+  const upsertQuery = supabase.from('perfiles' as keyof Database['public']['Tables']) as unknown as PerfilUpsertQuery;
+  const result = await upsertQuery.upsert(perfilPayload, { onConflict: 'id' }).select().maybeSingle();
+
+  if (result.error) {
+    throw new Error('No se pudo sincronizar el perfil del usuario con el negocio activo.');
+  }
+
+  return result.data ?? null;
 };

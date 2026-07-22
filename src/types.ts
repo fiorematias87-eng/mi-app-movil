@@ -32,6 +32,16 @@ export interface ProductoRow extends Producto {
   updated_at: string;
 }
 
+export interface PedidoRow {
+  id: string;
+  negocio_id: string;
+  estado?: string | null;
+  total?: number | null;
+  cliente_nombre?: string | null;
+  cliente_telefono?: string | null;
+  created_at?: string;
+}
+
 export interface ShopConfigRow {
   id?: string;
   negocio_id?: string;
@@ -41,6 +51,7 @@ export interface ShopConfigRow {
 
 export interface PerfilRow {
   id: string;
+  negocio_id?: string | null;
   rol: string | null;
 }
 
@@ -61,6 +72,11 @@ export interface Database {
         Row: ShopConfigRow;
         Insert: Omit<ShopConfigRow, 'id'>;
         Update: Partial<ShopConfigRow>;
+      };
+      pedidos: {
+        Row: PedidoRow;
+        Insert: Omit<PedidoRow, 'id'> & { id: string };
+        Update: Partial<PedidoRow>;
       };
       perfiles: {
         Row: PerfilRow;
