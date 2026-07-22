@@ -70,8 +70,12 @@ export const NegocioProvider: React.FC<{ children: ReactNode }> = ({ children })
         const hostname =
           typeof window !== 'undefined' ? window.location.hostname : '';
 
+        console.log('[tenant] window.location.hostname:', hostname);
+
         const baseDomain = getRootBaseDomain();
         const resolvedSubdomain = extractSubdomainFromHostname(hostname, baseDomain);
+
+        console.log('[tenant] resolvedSubdomain:', resolvedSubdomain);
 
         if (!active) return;
         setSubdominio(resolvedSubdomain);

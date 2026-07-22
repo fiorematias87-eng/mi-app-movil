@@ -8,6 +8,17 @@ const normalizeHostname = (value: string): string => {
     .replace(/\/$/, '');
 };
 
+const normalizeSubdomain = (value: string): string | null => {
+  const normalized = value.trim().toLowerCase();
+
+  if (!normalized) {
+    return null;
+  }
+
+  const sanitized = normalized.replace(/[^a-z0-9-]/g, '');
+  return sanitized && /^[a-z0-9-]{1,63}$/.test(sanitized) ? sanitized : null;
+};
+
 const isLoopbackOrIp = (hostname: string): boolean => {
   const normalized = hostname.trim().toLowerCase();
 
@@ -65,12 +76,10 @@ export const extractSubdomainFromHostname = (
         normalizedHost.length - normalizedBase.length - 1,
       );
 
-      return /^[a-z0-9-]{1,63}$/.test(candidate) ? candidate : null;
+      return normalizeSubdomain(candidate);
     }
   }
 
   const firstSegment = normalizedHost.split('.')[0] ?? '';
-  const sanitized = firstSegment.trim().toLowerCase();
-
-  return sanitized && /^[a-z0-9-]{1,63}$/.test(sanitized) ? sanitized : null;
+  return normalizeSubdomain(firstSegment);
 };
