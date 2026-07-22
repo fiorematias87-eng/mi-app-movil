@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ShoppingBag,
   DollarSign,
@@ -63,6 +63,17 @@ const crearProductoForm = (categoriaInicial: string): ProductoFormState => ({
   imagen: '',
   hidden: false,
 });
+
+const esUrlValida = (valor: string): boolean => {
+  if (!valor.trim()) return false;
+
+  try {
+    const url = new URL(valor);
+    return ['http:', 'https:'].includes(url.protocol);
+  } catch {
+    return false;
+  }
+};
 
 export default function AdminPanel({
   infoLocal,
@@ -213,43 +224,47 @@ export default function AdminPanel({
 
   const textoBusqueda = busquedaAdmin.trim().toLowerCase();
 
-  const productosFiltradosAdmin = (productos ?? []).filter((p) => {
-    const nombre = (p.nombre ?? '').toLowerCase();
-    const descripcion = (p.descripcion ?? '').toLowerCase();
+  const productosFiltradosAdmin = useMemo(() => {
+    if (!productos?.length) return [];
 
-    if (textoBusqueda !== '') {
-      return nombre.includes(textoBusqueda) || descripcion.includes(textoBusqueda);
-    }
-    return p.categoria === categoriaAdminActiva;
-  });
+    return productos.filter((p) => {
+      const nombre = (p.nombre ?? '').toLowerCase();
+      const descripcion = (p.descripcion ?? '').toLowerCase();
 
-  // guardarCatalogo removed: we persist per-document and use guardarProductosEnFirebase
-
-  // Escritura por producto: persistir en Firestore primero, luego actualizar estado local
-  const actualizarProductoEnFirestore = async (id: string, cambios: Partial<Producto>) => {
-    try {
-      const ok = await actualizarProducto(id, cambios, negocioId);
-      if (!ok) {
-        alert('No se pudo guardar el cambio. Revisa la conexión e intenta nuevamente.');
-        return false;
+      if (textoBusqueda !== '') {
+        return nombre.includes(textoBusqueda) || descripcion.includes(textoBusqueda);
       }
-      setProductos((prevP) => prevP.map((p) => (p.id === id ? { ...p, ...cambios } : p)));
-      return true;
-    } catch (error) {
-      console.error('Error actualizando producto en Supabase:', error);
-      alert('No se pudo guardar el cambio. Revisa la conexión e intenta nuevamente.');
-      return false;
-    }
-  };
 
-  const esUrlValida = (url: string) => {
+      return p.categoria === categoriaAdminActiva;
+    });
+  }, [productos, textoBusqueda, categoriaAdminActiva]);
+
+  const handleInfoLocalInputChange = useCallback(
+    (campo: keyof InfoLocal, valor: string | number) => {
+      setInfoLocal((prev) => ({
+        ...(prev ?? {}),
+        [campo]: valor,
+      }));
+    },
+    [setInfoLocal]
+  );
+
+  const persistInfoLocalChanges = useCallback(async () => {
+    if (!negocioId) return;
+
     try {
-      new URL(url);
-      return true;
-    } catch {
-      return false;
+      await saveShopConfigData(
+        {
+          infoLocal: infoLocal ?? {},
+          categorias,
+          productos,
+        },
+        negocioId
+      );
+    } catch (err) {
+      console.error('Error guardando infoLocal:', err);
     }
-  };
+  }, [negocioId, infoLocal, categorias, productos]);
 
   const handleGuardarProducto = async () => {
     if (!negocioId) {
@@ -263,10 +278,13 @@ export default function AdminPanel({
       return;
     }
 
-    const imagenValida = prodForm.imagen.trim() !== '' && esUrlValida(prodForm.imagen.trim());
+    const imagenValida =
+      prodForm.imagen.trim() !== '' && esUrlValida(prodForm.imagen.trim());
+
     const imagenFinal = imagenValida
       ? prodForm.imagen.trim()
       : 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?q=80&w=500';
+
     const campos: Omit<Producto, 'id'> = {
       nombre: prodForm.nombre.trim(),
       descripcion: prodForm.descripcion.trim(),
@@ -277,8 +295,9 @@ export default function AdminPanel({
     };
 
     setGuardando(true);
+
     if (editandoProductoId) {
-      const ok = await actualizarProductoEnFirestore(editandoProductoId, campos as Partial<Producto>);
+      const ok = await actualizarProducto(editandoProductoId, campos, negocioId);
       setGuardando(false);
       if (!ok) return;
     } else {
@@ -404,24 +423,32 @@ export default function AdminPanel({
     }
   };
 
-  const handleProductoImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleProductoImageUpload = async (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
     if (!negocioId) {
       alert('Cargando datos del negocio... Por favor reintenta en un momento.');
       return;
     }
 
+    if (!event.currentTarget.files?.length) return;
+
     let productoId = editandoProductoId;
 
     if (!productoId) {
       try {
-        const nuevoProducto = await crearProducto({
-          nombre: '',
-          descripcion: '',
-          precio: 0,
-          categoria: prodForm.categoria.trim(),
-          imagen: '',
-          hidden: false,
-        }, negocioId);
+        const nuevoProducto = await crearProducto(
+          {
+            nombre: '',
+            descripcion: '',
+            precio: 0,
+            categoria: prodForm.categoria.trim(),
+            imagen: '',
+            hidden: false,
+          },
+          negocioId
+        );
+
         productoId = nuevoProducto.id;
         setEditandoProductoId(nuevoProducto.id);
         setProductos((prev) => [...prev, nuevoProducto]);
@@ -433,15 +460,25 @@ export default function AdminPanel({
     }
 
     const url = await onFileChange(event, 'producto', productoId);
-    if (url) {
-      setProductoImageUrl(url);
-      setProdForm((prev) => ({ ...prev, imagen: url }));
-      await actualizarProducto(productoId, { imagen: url }, negocioId);
+
+    if (!url) {
+      event.currentTarget.value = '';
+      return;
     }
+
+    setProductoImageUrl(url);
+    setProdForm((prev) => ({ ...prev, imagen: url }));
+    await actualizarProducto(productoId, { imagen: url }, negocioId);
+    event.currentTarget.value = '';
   };
 
-  const handlePerfilImageUpload = async (event: React.ChangeEvent<HTMLInputElement>, tipo: 'portada' | 'avatar') => {
+  const handlePerfilImageUpload = async (
+    event: React.ChangeEvent<HTMLInputElement>,
+    tipo: 'portada' | 'avatar'
+  ) => {
+    if (!event.currentTarget.files?.length) return;
     await onFileChange(event, tipo);
+    event.currentTarget.value = '';
   };
 
   if (cargando) {
@@ -517,10 +554,45 @@ export default function AdminPanel({
         {seccionAdminAbierta === 'datos' && (
           <div className="p-4 pt-3 space-y-3 border-t border-neutral-800/50">
             <input type="text" placeholder="Nombre del Local" value={infoLocalValues.nombre ?? ''} onChange={(e) => void handleInfoLocalChange('nombre', e.target.value)} className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-2.5 px-3 text-xs text-white" disabled={suscripcionActiva === false} />
-            <textarea placeholder="Descripción / Slogan" value={infoLocalValues.descripcion ?? ''} onChange={(e) => void handleInfoLocalChange('descripcion', e.target.value)} className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-2.5 px-3 text-xs h-16 text-white" disabled={suscripcionActiva === false} />
-            <input type="text" placeholder="Dirección Comercial" value={infoLocalValues.direccion ?? ''} onChange={(e) => void handleInfoLocalChange('direccion', e.target.value)} className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-2.5 px-3 text-xs text-white" disabled={suscripcionActiva === false} />
-            <input type="text" placeholder="WhatsApp (Con código de área, ej: 549...)" value={infoLocalValues.telefonoWhatsApp ?? ''} onChange={(e) => void handleInfoLocalChange('telefonoWhatsApp', e.target.value)} className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-2.5 px-3 text-xs text-white" disabled={suscripcionActiva === false} />
-            <input type="number" placeholder="Costo de Envío Fijo ($)" value={infoLocalValues.costoEnvio ?? ''} onChange={(e) => void handleInfoLocalChange('costoEnvio', Number(e.target.value))} className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-2.5 px-3 text-xs text-white" disabled={suscripcionActiva === false} />
+
+            <textarea
+              placeholder="Descripción / Slogan"
+              value={infoLocalValues.descripcion ?? ''}
+              onChange={(e) => void handleInfoLocalChange('descripcion', e.target.value)}
+              onBlur={() => void persistInfoLocalChanges()}
+              className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-2.5 px-3 text-xs h-16 text-white"
+              disabled={suscripcionActiva === false}
+            />
+
+            <input
+              type="text"
+              placeholder="Dirección Comercial"
+              value={infoLocalValues.direccion ?? ''}
+              onChange={(e) => void handleInfoLocalChange('direccion', e.target.value)}
+              onBlur={() => void persistInfoLocalChanges()}
+              className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-2.5 px-3 text-xs text-white"
+              disabled={suscripcionActiva === false}
+            />
+
+            <input
+              type="text"
+              placeholder="WhatsApp (Con código de área, ej: 549...)"
+              value={infoLocalValues.telefonoWhatsApp ?? ''}
+              onChange={(e) => void handleInfoLocalChange('telefonoWhatsApp', e.target.value)}
+              onBlur={() => void persistInfoLocalChanges()}
+              className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-2.5 px-3 text-xs text-white"
+              disabled={suscripcionActiva === false}
+            />
+
+            <input
+              type="number"
+              placeholder="Costo de Envío Fijo ($)"
+              value={infoLocalValues.costoEnvio ?? ''}
+              onChange={(e) => void handleInfoLocalChange('costoEnvio', Number(e.target.value))}
+              onBlur={() => void persistInfoLocalChanges()}
+              className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-2.5 px-3 text-xs text-white"
+              disabled={suscripcionActiva === false}
+            />
           </div>
         )}
       </div>
