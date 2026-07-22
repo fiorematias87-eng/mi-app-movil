@@ -57,6 +57,7 @@ type InsertManyProductosQuery = {
 
 const CONFIG_TABLES = ['shop_config', 'configuracion'] as const satisfies readonly ConfigTableName[];
 const PRODUCTOS_TABLE = 'productos' as const;
+const STORAGE_BUCKET = 'imagenes' as const;
 
 export interface ShopConfigData {
   infoLocal: Partial<InfoLocal> | undefined;
@@ -121,11 +122,44 @@ const generateId = (): string => {
 };
 
 const ensureNegocioId = (negocioId?: string): string => {
-  if (!negocioId) {
+  if (!negocioId?.trim()) {
     throw new Error('Cargando datos del negocio... Por favor reintenta en un momento.');
   }
 
   return negocioId;
+};
+
+export const uploadImageToSupabaseStorage = async (
+  file: File,
+  negocioId?: string,
+  tipo: 'portada' | 'avatar' | 'producto' = 'producto',
+  productId?: string,
+): Promise<string> => {
+  const tenantId = ensureNegocioId(negocioId);
+  const extension = file.name.includes('.') ? file.name.split('.').pop() ?? 'jpg' : 'jpg';
+  const safeName = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${extension}`;
+  const folder = tipo === 'producto' ? 'productos' : tipo;
+  const objectPath = `${tenantId}/${folder}/${productId ?? 'general'}/${safeName}`;
+
+  const { data: uploadData, error: uploadError } = await supabase.storage
+    .from(STORAGE_BUCKET)
+    .upload(objectPath, file, {
+      cacheControl: '3600',
+      upsert: true,
+      contentType: file.type || 'application/octet-stream',
+    });
+
+  if (uploadError) {
+    throw new Error(uploadError.message || 'No se pudo subir la imagen al almacenamiento de Supabase.');
+  }
+
+  const publicUrlResult = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(uploadData?.path ?? objectPath);
+
+  if (!publicUrlResult.data?.publicUrl) {
+    throw new Error('No se pudo obtener la URL pública de la imagen subida.');
+  }
+
+  return publicUrlResult.data.publicUrl;
 };
 
 const isMissingTableError = (error: { code?: string; message?: string } | null): boolean => {

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Camera, Edit2, Eye, EyeOff, Loader2, Trash2 } from 'lucide-react';
-import { crearProducto, actualizarProducto } from '../db';
+import { crearProducto, actualizarProducto, uploadImageToSupabaseStorage } from '../db';
 import { useNegocio } from '../context/NegocioContext';
 import type { Producto } from '../types';
 
@@ -45,7 +45,7 @@ export default function ProductoItem({
   const getCacheBustedUrl = (url?: string) => {
     if (!url?.trim()) return '';
     if (url.startsWith('data:')) return url;
-    const stamp = imageCacheVersion > 0 ? imageCacheVersion : Date.now();
+    const stamp = imageCacheVersion > 0 ? imageCacheVersion : 1;
     const separator = url.includes('?') ? '&' : '?';
     return `${url}${separator}t=${stamp}`;
   };
@@ -85,33 +85,7 @@ export default function ProductoItem({
         setDraft((prev) => ({ ...prev, id: nuevoProducto.id }));
       }
 
-      // Preparar datos para Cloudinary
-      const cloudinaryCloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
-      const cloudinaryUploadPreset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
-
-      if (!cloudinaryCloudName || !cloudinaryUploadPreset) {
-        throw new Error('Variables de entorno de Cloudinary no configuradas');
-      }
-
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('upload_preset', cloudinaryUploadPreset);
-
-      // Subir a Cloudinary
-      const cloudinaryResponse = await fetch(
-        `https://api.cloudinary.com/v1_1/${cloudinaryCloudName}/image/upload`,
-        {
-          method: 'POST',
-          body: formData,
-        }
-      );
-
-      if (!cloudinaryResponse.ok) {
-        throw new Error('Error en la subida a Cloudinary');
-      }
-
-      const cloudinaryData = (await cloudinaryResponse.json()) as { secure_url: string };
-      const urlNube = cloudinaryData.secure_url;
+      const urlNube = await uploadImageToSupabaseStorage(file, negocioId, 'producto', idParaSubir);
 
       await actualizarProducto(idParaSubir, { imagen: urlNube }, negocioId);
       const productoActualizado: Producto = { ...draft, id: idParaSubir, imagen: urlNube };
@@ -120,7 +94,8 @@ export default function ProductoItem({
       onProductUpdated?.(productoActualizado);
     } catch (error) {
       console.error('Error al subir la imagen del producto:', error);
-      alert('No se pudo subir la imagen del producto. Intenta nuevamente.');
+      const mensaje = error instanceof Error ? error.message : 'No se pudo subir la imagen del producto. Intenta nuevamente.';
+      alert(mensaje);
     } finally {
       setIsUploading(false);
     }

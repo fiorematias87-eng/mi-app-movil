@@ -44,7 +44,7 @@ interface AdminPanelProps {
   onEjecutarCierreCaja: () => void;
   subiendoImagen: boolean;
   onFileChange: (event: React.ChangeEvent<HTMLInputElement>, tipo: 'portada' | 'avatar' | 'producto', productId?: string) => Promise<string | undefined>;
-  onInitialized?: () => void; // opcional: sólo añadir si realmente la usas desde App.tsx
+  onInitialized?: () => void;
 }
 
 type ProductoFormState = {
@@ -99,7 +99,6 @@ export default function AdminPanel({
   const [categoriaAdminActiva, setCategoriaAdminActiva] = useState<string>(categorias[0] ?? 'pizzas');
   
   const [prodForm, setProdForm] = useState<ProductoFormState>(crearProductoForm(categorias[0] ?? 'pizzas'));
-  const [productoImageUrl, setProductoImageUrl] = useState<string>('');
   const [busquedaAdmin, setBusquedaAdmin] = useState('');
   const [suscripcionActiva, setSuscripcionActiva] = useState<boolean | null>(null);
   const [suscripcionCargando, setSuscripcionCargando] = useState(true);
@@ -134,31 +133,37 @@ export default function AdminPanel({
           return;
         }
 
-        if (!negocioId) {
+        const perfilResult = await supabase
+          .from('perfiles')
+          .select('rol, negocio_id')
+          .eq('id', user.id)
+          .maybeSingle<{ rol: string | null; negocio_id: string | null }>();
+
+        if (perfilResult.error) {
+          throw perfilResult.error;
+        }
+
+        const perfilNegocioId = perfilResult.data?.negocio_id ?? negocioIdFromContext ?? null;
+
+        if (!perfilNegocioId?.trim()) {
           if (activo) {
             setEsAdmin(false);
           }
           return;
         }
 
-        const { data, error } = await supabase
-          .from('perfiles')
-          .select('rol, negocio_id')
-          .eq('id', user.id)
-          .maybeSingle<{ rol: string | null; negocio_id: string | null }>();
-
-        if (error) {
-          throw error;
-        }
-
         const perfilActualizado = await syncPerfilNegocio(
           user.id,
-          negocioId,
-          data?.rol ?? 'admin',
+          perfilNegocioId,
+          perfilResult.data?.rol ?? 'admin',
         );
 
         if (activo) {
           setEsAdmin(perfilActualizado?.rol === 'admin');
+        }
+
+        if (activo) {
+          onInitialized?.();
         }
       } catch (error) {
         console.error('Error verificando permisos de administrador:', error);
@@ -204,9 +209,8 @@ export default function AdminPanel({
 
   const getCacheBustedUrl = (url?: string) => {
     if (!url) return '';
-    const stamp = imageCacheVersion || Date.now();
     const separator = url.includes('?') ? '&' : '?';
-    return `${url}${separator}t=${stamp}`;
+    return `${url}${separator}t=${imageCacheVersion}`;
   };
 
   useEffect(() => {
@@ -252,16 +256,6 @@ export default function AdminPanel({
       return p.categoria === categoriaAdminActiva;
     });
   }, [productos, textoBusqueda, categoriaAdminActiva]);
-
-  const handleInfoLocalInputChange = useCallback(
-    (campo: keyof InfoLocal, valor: string | number) => {
-      setInfoLocal((prev) => ({
-        ...(prev ?? {}),
-        [campo]: valor,
-      }));
-    },
-    [setInfoLocal]
-  );
 
   const persistInfoLocalChanges = useCallback(async () => {
     if (!negocioId) return;
@@ -330,7 +324,6 @@ export default function AdminPanel({
 
     setEditandoProductoId(null);
     setProdForm(crearProductoForm(categorias[0] ?? 'pizzas'));
-    setProductoImageUrl('');
     setMostrarFormularioProd(false);
   };
 
@@ -480,8 +473,8 @@ export default function AdminPanel({
       return;
     }
 
-    setProductoImageUrl(url);
     setProdForm((prev) => ({ ...prev, imagen: url }));
+    setImageCacheVersion((prev) => prev + 1);
     await actualizarProducto(productoId, { imagen: url }, negocioId);
     event.currentTarget.value = '';
   };
@@ -491,7 +484,10 @@ export default function AdminPanel({
     tipo: 'portada' | 'avatar'
   ) => {
     if (!event.currentTarget.files?.length) return;
-    await onFileChange(event, tipo);
+    const url = await onFileChange(event, tipo);
+    if (url) {
+      setImageCacheVersion((prev) => prev + 1);
+    }
     event.currentTarget.value = '';
   };
 

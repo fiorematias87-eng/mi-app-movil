@@ -4,7 +4,7 @@ import { ShoppingCart, Star, Minus, Plus, X, MapPin, Search, Trash2, ExternalLin
 import AdminPanel from '../../components/AdminPanel';
 import EsqueletoCarga from '../../components/EsqueletoCarga';
 import { supabase } from '../../supabase';
-import { saveShopConfigData } from '../../db';
+import { saveShopConfigData, uploadImageToSupabaseStorage } from '../../db';
 import { useNegocio } from '../../context/NegocioContext';
 import type { Producto, InfoLocal } from '../../types';
 
@@ -328,40 +328,23 @@ export default function HomeCliente({ productos, infoLocal, categorias }: HomeCl
     }, negocioId);
   };
 
-  const handleFileChange = async (e: ChangeEvent<HTMLInputElement>, tipo: 'portada' | 'avatar' | 'producto') => {
+  const handleFileChange = async (
+    e: ChangeEvent<HTMLInputElement>,
+    tipo: 'portada' | 'avatar' | 'producto',
+    productId?: string,
+  ) => {
     const file = e.target.files?.[0];
     if (!file) return undefined;
 
-    const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
-    const uploadPreset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
-
-    if (!cloudName || !uploadPreset) {
-      alert('Error de configuración de Cloudinary en las variables de entorno.');
+    if (!negocioId) {
+      alert('Cargando datos del negocio... Por favor reintenta en un momento.');
       return undefined;
     }
 
     setSubiendoImagen(true);
 
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('upload_preset', uploadPreset);
-
-      const respuesta = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!respuesta.ok) {
-        throw new Error('No se pudo subir la imagen a Cloudinary.');
-      }
-
-      const datosImagen = await respuesta.json() as { secure_url?: string };
-      const urlNube = datosImagen.secure_url;
-
-      if (!urlNube) {
-        throw new Error('Cloudinary no devolvió una URL válida.');
-      }
+      const urlNube = await uploadImageToSupabaseStorage(file, negocioId, tipo, productId);
 
       if (tipo === 'producto') {
         return urlNube;
@@ -372,7 +355,8 @@ export default function HomeCliente({ productos, infoLocal, categorias }: HomeCl
       return urlNube;
     } catch (error) {
       console.error('Error al subir la imagen:', error);
-      alert(tipo === 'producto' ? 'No se pudo subir la imagen del producto.' : 'Error al subir la imagen.');
+      const mensaje = error instanceof Error ? error.message : 'No se pudo subir la imagen.';
+      alert(mensaje);
       return undefined;
     } finally {
       setSubiendoImagen(false);
