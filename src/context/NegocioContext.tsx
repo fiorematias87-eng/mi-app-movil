@@ -6,7 +6,12 @@ import React, {
   useState,
   type ReactNode,
 } from 'react';
-import { supabase } from '../supabase';
+import { getRootBaseDomain, extractSubdomainFromHostname } from '../utils/subdomain';
+import {
+  getConfiguracion,
+  getNegocioBySubdominio,
+} from '../services/tenant.service';
+import type { NegocioRecord } from '../services/tenant.service';
 
 export interface NegocioContextType {
   negocioId: string | null;
@@ -18,50 +23,25 @@ export interface NegocioContextType {
   subdominio: string | null;
 }
 
-interface NegocioRecord {
-  id: string;
-  nombre: string;
-  subdominio?: string | null;
-}
-
-const DEFAULT_SUBDOMAIN = 'apppedidosnuevolocal';
-
-const isLoopbackOrIp = (hostname: string): boolean => {
-  const normalized = hostname.trim().toLowerCase();
-  if (!normalized) return true;
-  if (normalized === 'localhost' || normalized === '127.0.0.1' || normalized === '0.0.0.0' || normalized === '::1') {
-    return true;
-  }
-
-  return /^\d{1,3}(?:\.\d{1,3}){3}$/.test(normalized);
-};
-
-const extractSubdominio = (hostname: string): string | null => {
-  if (!hostname) return null;
-
-  const normalizedHost = hostname.trim().toLowerCase();
-  if (!normalizedHost) return null;
-
-  if (isLoopbackOrIp(normalizedHost)) {
-    return DEFAULT_SUBDOMAIN;
-  }
-
-  // Obtener el primer segmento explicitamente y sanitizarlo
-  const firstSegment = normalizedHost.split('.')[0] ?? '';
-  const subdominioLimpio = firstSegment.trim().toLowerCase();
-  if (!subdominioLimpio) return null;
-
-  // Validar formato razonable para subdominios
-  return /^[a-z0-9-]{1,63}$/.test(subdominioLimpio) ? subdominioLimpio : null;
-};
-
-const isMissingTableError = (error: { code?: string; message?: string } | null): boolean => {
-  const code = error?.code ?? '';
-  const message = error?.message ?? '';
-  return code === '42P01' || code === 'PGRST205' || /does not exist|relation/i.test(message);
-};
-
 const NegocioContext = createContext<NegocioContextType | undefined>(undefined);
+
+const resetTenantState = (
+  setNegocioId: React.Dispatch<React.SetStateAction<string | null>>,
+  setNegocioNombre: React.Dispatch<React.SetStateAction<string | null>>,
+  setConfiguracion: React.Dispatch<React.SetStateAction<Record<string, unknown> | null>>,
+  setLoading: React.Dispatch<React.SetStateAction<boolean>>,
+  setError: React.Dispatch<React.SetStateAction<string | null>>,
+  setTenantNotFound: React.Dispatch<React.SetStateAction<boolean>>,
+  setSubdominio: React.Dispatch<React.SetStateAction<string | null>>,
+): void => {
+  setNegocioId(null);
+  setNegocioNombre(null);
+  setConfiguracion(null);
+  setLoading(true);
+  setError(null);
+  setTenantNotFound(false);
+  setSubdominio(null);
+};
 
 export const NegocioProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [negocioId, setNegocioId] = useState<string | null>(null);
@@ -73,91 +53,68 @@ export const NegocioProvider: React.FC<{ children: ReactNode }> = ({ children })
   const [subdominio, setSubdominio] = useState<string | null>(null);
 
   useEffect(() => {
-    let mounted = true;
+    let active = true;
 
-    const detectarNegocioPorSubdominio = async () => {
+    const resolveTenant = async (): Promise<void> => {
+      resetTenantState(
+        setNegocioId,
+        setNegocioNombre,
+        setConfiguracion,
+        setLoading,
+        setError,
+        setTenantNotFound,
+        setSubdominio,
+      );
+
       try {
-        const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
-        const subdominioLimpio = extractSubdominio(hostname);
+        const hostname =
+          typeof window !== 'undefined' ? window.location.hostname : '';
 
-        setSubdominio(subdominioLimpio);
-        setError(null);
-        setTenantNotFound(false);
-        setConfiguracion(null);
+        const baseDomain = getRootBaseDomain();
+        const resolvedSubdomain = extractSubdomainFromHostname(hostname, baseDomain);
 
-        if (!subdominioLimpio) {
-          if (mounted) {
-            setTenantNotFound(true);
-            setLoading(false);
-          }
+        if (!active) return;
+        setSubdominio(resolvedSubdomain);
+
+        if (!resolvedSubdomain) {
+          setTenantNotFound(true);
           return;
         }
 
-        const negocioResponse = await supabase
-          .from('negocios')
-          .select('id, nombre, subdominio')
-          .eq('subdominio', subdominioLimpio)
-          .maybeSingle();
+        const negocio: NegocioRecord | null = await getNegocioBySubdominio(resolvedSubdomain);
 
-        const negocio = negocioResponse.data as NegocioRecord | null;
-
-        if (negocioResponse.error || !negocio) {
-          console.error(
-            `Subdominio buscado: '${subdominioLimpio}'`,
-            negocioResponse.error ?? 'no data returned',
-          );
-
-          if (mounted) {
-            setTenantNotFound(true);
-          }
+        if (!active) return;
+        if (!negocio) {
+          setTenantNotFound(true);
           return;
         }
 
-        if (mounted) {
-          setNegocioId(negocio.id);
-          setNegocioNombre(negocio.nombre);
-        }
+        setNegocioId(negocio.id);
+        setNegocioNombre(negocio.nombre);
 
-        let configuracionData: Record<string, unknown> | null = null;
-        let configError: Error | null = null;
+        const configuracionData = await getConfiguracion(negocio.id);
 
-        for (const tableName of ['configuracion', 'shop_config']) {
-          const response = await supabase.from(tableName).select('*').eq('negocio_id', negocio.id).maybeSingle();
+        if (!active) return;
+        setConfiguracion(configuracionData);
+      } catch (err) {
+        if (!active) return;
 
-          if (!response.error && response.data) {
-            configuracionData = response.data as Record<string, unknown>;
-            break;
-          }
-
-          if (response.error && !isMissingTableError(response.error)) {
-            configError = response.error as Error;
-            break;
-          }
-        }
-
-        if (configError) {
-          throw configError;
-        }
-
-        if (mounted) {
-          setConfiguracion(configuracionData);
-        }
-      } catch (err: unknown) {
-        if (mounted) {
-          setError(err instanceof Error ? err.message : 'unknown_error');
-          setTenantNotFound(false);
-        }
+        const message =
+          err instanceof Error
+            ? err.message
+            : 'No se pudo resolver el tenant.';
+        setError(message);
       } finally {
-        if (mounted) {
+        if (active) {
           setLoading(false);
         }
       }
     };
 
-    void detectarNegocioPorSubdominio();
+    void resolveTenant();
 
     return () => {
-      mounted = false;
+      active = false;
     };
   }, []);
 
@@ -177,8 +134,10 @@ export const NegocioProvider: React.FC<{ children: ReactNode }> = ({ children })
   return <NegocioContext.Provider value={value}>{children}</NegocioContext.Provider>;
 };
 
-export const useNegocio = () => {
+export const useNegocio = (): NegocioContextType => {
   const context = useContext(NegocioContext);
-  if (!context) throw new Error('useNegocio debe usarse dentro de un NegocioProvider');
+  if (!context) {
+    throw new Error('useNegocio debe usarse dentro de un NegocioProvider');
+  }
   return context;
 };
